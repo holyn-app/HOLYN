@@ -65,9 +65,23 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div class="card"><h2>Mis viajes</h2><div id="myTrips"></div></div>
 </section>
 
-<section id="driver" class="hidden">
+<div id="driverRegistration" class="card hidden">
+<h2>📝 Registro de conductor</h2>
+<p class="muted">Completa tus datos. Tu solicitud será revisada antes de habilitarte.</p>
+<label>Nombre completo</label><input id="drvName" placeholder="Nombre y apellido">
+<label>Teléfono</label><input id="drvPhone" placeholder="09xx xxx xxx">
+<label>Cédula</label><input id="drvId" placeholder="Número de cédula">
+<label>Licencia</label><input id="drvLicense" placeholder="Número de licencia">
+<label>Vencimiento de licencia</label><input id="drvLicenseExpiry" type="date">
+<div class="grid"><div><label>Marca</label><input id="drvMake" placeholder="Toyota"></div><div><label>Modelo</label><input id="drvModel" placeholder="Corolla"></div></div>
+<div class="grid"><div><label>Año</label><input id="drvYear" type="number" min="2009" placeholder="2009"></div><div><label>Chapa</label><input id="drvPlate" placeholder="ABC 123"></div></div>
+<label>Servicio</label><select id="drvService"><option>HOLYN</option><option>HOLYN Plus</option><option>HOLYN Moto</option></select>
+<p class="muted">🚗 HOLYN admite vehículos modelo 2009 en adelante.</p>
+<button onclick="submitDriverRegistration()">Enviar solicitud</button>
+<div id="registrationMsg" class="msg hidden"></div>
+</div><section id="driver" class="hidden">
 <div class="card"><h2>🚗 Panel del conductor</h2>
-<button id="onlineBtn" onclick="toggleOnline()">Ponerme EN LÍNEA</button>
+<div id="driverStatus" class="msg">Estado: pendiente de revisión.</div><button id="onlineBtn" onclick="toggleOnline()">Ponerme EN LÍNEA</button>
 <div id="driverMsg" class="msg hidden"></div>
 </div>
 <div class="card"><h2>Solicitudes disponibles</h2><div id="requests"></div></div>
@@ -219,12 +233,29 @@ async function toggleOnline(){
 }
 async function loadDriver(){
  const {data:dp}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
- document.getElementById('onlineBtn').textContent=dp?.is_online?'🟢 EN LÍNEA':'Ponerme EN LÍNEA';
+ const approved=dp?.is_approved===true;
+ document.getElementById('driverRegistration').classList.toggle('hidden',!!dp);
+ document.getElementById('onlineBtn').disabled=!approved;
+ document.getElementById('onlineBtn').textContent=approved?(dp?.is_online?'🟢 EN LÍNEA':'Ponerme EN LÍNEA'):'🔒 Pendiente de aprobación';
+ document.getElementById('driverStatus').textContent=approved?'✅ Conductor aprobado. Ya puedes recibir viajes.':'🟡 Solicitud pendiente de revisión por HOLYN.';
  const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(20);
- document.getElementById('requests').innerHTML=error?'<p>'+error.message+'</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>';
+ document.getElementById('requests').innerHTML=!approved?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes.</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
  document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>`<p>${t.destination_text} · Gs. ${Number(t.estimated_fare).toLocaleString()} · <b>${t.status}</b></p>`).join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
+async function submitDriverRegistration(){
+ const year=Number(document.getElementById('drvYear').value);
+ const ids=['drvName','drvPhone','drvId','drvLicense','drvLicenseExpiry','drvMake','drvModel','drvYear','drvPlate'];
+ if(ids.some(id=>!document.getElementById(id).value.trim())){msg('registrationMsg','Completa todos los datos.');return}
+ if(year<2009){msg('registrationMsg','❌ HOLYN no admite vehículos modelo 2008 o anteriores.');return}
+ const info={user_id:profile.id,is_online:false,is_approved:false,license_number:document.getElementById('drvLicense').value.trim(),license_expiry:document.getElementById('drvLicenseExpiry').value,vehicle_make:document.getElementById('drvMake').value.trim(),vehicle_model:document.getElementById('drvModel').value.trim(),vehicle_year:year,plate:document.getElementById('drvPlate').value.trim()};
+ const {error}=await sb.from('driver_profiles').upsert(info,{onConflict:'user_id'});
+ if(error){msg('registrationMsg','No pudimos enviar la solicitud. Inténtalo nuevamente.');return}
+ await sb.auth.updateUser({data:{full_name:document.getElementById('drvName').value.trim(),phone:document.getElementById('drvPhone').value.trim(),document_id:document.getElementById('drvId').value.trim(),driver_service:document.getElementById('drvService').value}});
+ msg('registrationMsg','✅ Solicitud enviada. Queda pendiente de revisión por HOLYN.');
+ loadDriver();
+}
+
 async function acceptTrip(id){
  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
