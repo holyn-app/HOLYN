@@ -178,7 +178,7 @@ async function forgotPassword(){
  const button=document.querySelector('#auth button[onclick="forgotPassword()"]');
  if(button){button.disabled=true;button.textContent='Enviando...'}
  try{
-   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href});
+   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:'https://holyn-app.github.io/HOLYN/'});
    if(error) msg('authMsg','No pudimos enviar el correo de recuperación. Revisa que el correo sea correcto.');
    else msg('authMsg','📩 Te enviamos un correo para crear una contraseña nueva. Revisa también Spam.');
  }catch(e){
