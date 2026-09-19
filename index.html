@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HOLYN — Conectada</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#071426;color:#fff}
+header{padding:18px 22px;background:#0b1d35;display:flex;justify-content:space-between;align-items:center}
+.logo{font-size:28px;font-weight:800;letter-spacing:1px}.logo span{color:#27a7ff}
+main{max-width:1000px;margin:auto;padding:24px}.card{background:#10243d;border:1px solid #1d3b5d;border-radius:18px;padding:20px;margin-bottom:18px}
+h1,h2{margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+button{border:0;border-radius:12px;padding:13px 16px;background:#1597ee;color:#fff;font-weight:700;cursor:pointer;margin:5px 4px 5px 0}
+button.secondary{background:#203c5d}button.danger{background:#a33}
+input,select{width:100%;padding:13px;border-radius:10px;border:1px solid #36506c;background:#091a2e;color:#fff;margin:6px 0 12px}
+.hidden{display:none}.msg{padding:12px;border-radius:10px;background:#0a3149;margin:10px 0}.muted{color:#a9bad0;font-size:14px}
+.vehicle{padding:15px;border:1px solid #315070;border-radius:14px;cursor:pointer}.vehicle.active{border-color:#27a7ff;background:#123653}
+table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px solid #29435f;text-align:left}
+</style>
+</head>
+<body>
+<header><div class="logo">HOL<span>YN</span></div><div class="muted">Tu camino, más fácil.</div></header>
+<main>
+<div id="auth" class="card">
+<h1>Bienvenido a HOLYN</h1>
+<p class="muted">Tu camino, más fácil.</p>
+<div class="grid">
+<div><label>Correo</label><input id="email" type="email" placeholder="tu@email.com"></div>
+<div><label>Contraseña</label><input id="password" type="password" placeholder="••••••••"></div>
+</div>
+<label>Nombre (solo para registrarte)</label><input id="name" placeholder="Tu nombre">
+<label>Tipo de cuenta</label>
+<select id="role"><option value="passenger">Pasajero</option><option value="driver">Conductor</option></select>
+<button onclick="login()">Iniciar sesión</button>
+<button class="secondary" onclick="signup()">Crear mi cuenta</button>
+<button class="secondary" onclick="forgotPassword()">¿Olvidaste tu contraseña?</button>
+<div id="authMsg" class="msg hidden"></div>
+<div id="signupSuccess" class="card hidden" style="margin-top:14px;background:#0b3044;border-color:#2a9fd8">
+  <h2>🎉 ¡Cuenta creada!</h2>
+  <p class="muted" id="signupSuccessText">Tu cuenta fue creada correctamente.</p>
+  <button onclick="backToLogin()">Volver a iniciar sesión</button>
+</div>
+</div>
+
+<div id="app" class="hidden">
+<div class="card">
+<div class="muted">Sesión activa</div><h2 id="who"></h2>
+<button class="secondary" onclick="logout()">Cerrar sesión</button>
+</div>
+
+<section id="passenger" class="hidden">
+<div class="card"><h2>🚕 Pedir un viaje</h2>
+<label>¿A dónde vas?</label><input id="destination" placeholder="Destino">
+<div class="grid">
+<div class="vehicle" onclick="chooseVehicle('HOLYN',this)"><b>HOLYN</b><br><span class="muted">Viaje estándar</span></div>
+<div class="vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>HOLYN Plus</b><br><span class="muted">Más comodidad</span></div>
+<div class="vehicle" onclick="chooseVehicle('HOLYN Moto',this)"><b>HOLYN Moto</b><br><span class="muted">Moto</span></div>
+<div class="vehicle" onclick="chooseVehicle('Paquetería',this)"><b>📦 Paquetería</b><br><span class="muted">Entrega</span></div>
+</div>
+<label>Método de pago</label><select id="payment"><option value="cash">Efectivo</option><option value="card">Tarjeta</option></select>
+<label>Precio estimado (Gs.)</label><input id="fare" type="number" value="30000">
+<button onclick="requestTrip()">Solicitar</button>
+<div id="passengerMsg" class="msg hidden"></div></div>
+<div class="card"><h2>Mis viajes</h2><div id="myTrips"></div></div>
+</section>
+
+<section id="driver" class="hidden">
+<div class="card"><h2>🚗 Panel del conductor</h2>
+<button id="onlineBtn" onclick="toggleOnline()">Ponerme EN LÍNEA</button>
+<div id="driverMsg" class="msg hidden"></div>
+</div>
+<div class="card"><h2>Solicitudes disponibles</h2><div id="requests"></div></div>
+<div class="card"><h2>Mis viajes</h2><div id="driverTrips"></div></div>
+</section>
+
+<section id="admin" class="hidden">
+<div class="card"><h2>🛡️ Administración</h2><p class="muted">El panel administrativo completo se conectará en la siguiente etapa.</p>
+<div id="adminData"></div></div>
+</section>
+</div>
+</main>
+<script>
+const SUPABASE_URL="https://ambngomuefjsopcunoqa.supabase.co";
+const SUPABASE_KEY="sb_publishable_D9AK6Jwb99wIBHJ7LkGhWg_uvCIxjzW";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let profile=null, vehicle="HOLYN";
+
+function msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
+function chooseVehicle(v,el){vehicle=v;document.querySelectorAll('.vehicle').forEach(x=>x.classList.remove('active'));el.classList.add('active')}
+async function signup(){
+ const email=emailEl().value.trim();
+ const password=document.getElementById('password').value;
+ const name=document.getElementById('name').value.trim();
+ const role=document.getElementById('role').value;
+ if(!email||!password||!name){msg('authMsg','Completa correo, contraseña y nombre.');return}
+ if(password.length < 6){msg('authMsg','La contraseña debe tener al menos 6 caracteres.');return}
+ const button=document.querySelector('#auth button[onclick="signup()"]');
+ if(button){button.disabled=true;button.textContent='Creando cuenta...'}
+ document.getElementById('authMsg').classList.add('hidden');
+ try{
+   const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:name,role}}});
+   if(error){
+     const m=(error.message||'').toLowerCase();
+     if(m.includes('already registered')||m.includes('already been registered')) msg('authMsg','Ese correo ya tiene una cuenta. Pulsa “Iniciar sesión”.');
+     else msg('authMsg','No pudimos crear la cuenta. Revisa los datos e inténtalo nuevamente.');
+     return;
+   }
+   if(data.session){ await start(); return; }
+   document.getElementById('signupSuccessText').textContent='La cuenta fue creada. Si ya estás dentro, HOLYN continuará automáticamente; si no, vuelve a iniciar sesión.';
+   document.getElementById('signupSuccess').classList.remove('hidden');
+   document.querySelectorAll('#auth input, #auth select, #auth > button').forEach(e=>e.classList.add('hidden'));
+   document.querySelector('#auth h1').textContent='Cuenta creada correctamente';
+   document.querySelector('#auth > p').textContent='Ahora puedes volver a iniciar sesión.';
+ }catch(e){
+   msg('authMsg','No pudimos completar el registro. Revisa tu conexión e inténtalo nuevamente.');
+ }finally{
+   if(button){button.disabled=false;button.textContent='Crear mi cuenta'}
+ }
+}
+function backToLogin(){
+ document.getElementById('signupSuccess').classList.add('hidden');
+ document.querySelectorAll('#auth input, #auth select, #auth > button').forEach(e=>e.classList.remove('hidden'));
+ document.querySelector('#auth h1').textContent='Bienvenido a HOLYN';
+ document.querySelector('#auth > p').textContent='Tu camino, más fácil.';
+ document.getElementById('name').value='';
+ document.getElementById('password').value='';
+ document.getElementById('authMsg').classList.add('hidden');
+ document.getElementById('email').focus();
+}
+function emailEl(){return document.getElementById('email')}
+async function login(){
+ const email=emailEl().value.trim();
+ const password=document.getElementById('password').value;
+ if(!email||!password){msg('authMsg','Escribe tu correo y contraseña.');return}
+ const button=document.querySelector('#auth button[onclick="login()"]');
+ if(button){button.disabled=true;button.textContent='Entrando...'}
+ try{
+   const {error}=await sb.auth.signInWithPassword({email,password});
+   if(error){
+     const m=(error.message||'').toLowerCase();
+     if(m.includes('email not confirmed')) msg('authMsg','Tu correo todavía no está confirmado. Revisa tu bandeja de entrada y spam.');
+     else if(m.includes('invalid login credentials')) msg('authMsg','El correo o la contraseña no coinciden. Puedes usar “¿Olvidaste tu contraseña?” para crear una nueva.');
+     else msg('authMsg','No pudimos iniciar sesión. Revisa tu correo y contraseña.');
+     return;
+   }
+   await start();
+ }catch(e){
+   msg('authMsg','No se pudo iniciar sesión. Revisa tu conexión e inténtalo nuevamente.');
+ }finally{
+   if(button){button.disabled=false;button.textContent='Iniciar sesión'}
+ }
+}
+async function logout(){await sb.auth.signOut();location.reload()}
+async function start(){
+ const {data:{user}}=await sb.auth.getUser();
+ if(!user)return;
+ // El perfil es útil para el rol, pero un problema de permisos no debe bloquear la sesión.
+ const r=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
+ const fallbackRole=user.user_metadata?.role || 'passenger';
+ profile=r.data || {
+   id:user.id,
+   full_name:user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
+   role:fallbackRole
+ };
+ document.getElementById('auth').classList.add('hidden');
+ document.getElementById('app').classList.remove('hidden');
+ document.getElementById('who').textContent=(profile.full_name||user.email)+' — '+profile.role;
+ ['passenger','driver','admin'].forEach(x=>document.getElementById(x).classList.toggle('hidden',profile.role!==x));
+ if(profile.role==='passenger')loadPassenger();
+ if(profile.role==='driver')loadDriver();
+ if(profile.role==='admin')loadAdmin();
+}
+
+async function forgotPassword(){
+ const email=emailEl().value.trim();
+ if(!email){msg('authMsg','Escribe primero tu correo y luego pulsa “¿Olvidaste tu contraseña?”.');return}
+ const button=document.querySelector('#auth button[onclick="forgotPassword()"]');
+ if(button){button.disabled=true;button.textContent='Enviando...'}
+ try{
+   const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href});
+   if(error) msg('authMsg','No pudimos enviar el correo de recuperación. Revisa que el correo sea correcto.');
+   else msg('authMsg','📩 Te enviamos un correo para crear una contraseña nueva. Revisa también Spam.');
+ }catch(e){
+   msg('authMsg','No pudimos enviar el correo de recuperación. Inténtalo nuevamente.');
+ }finally{
+   if(button){button.disabled=false;button.textContent='¿Olvidaste tu contraseña?'}
+ }
+}
+
+sb.auth.onAuthStateChange(async (event, session)=>{
+ if(event==='PASSWORD_RECOVERY' && session){
+   const newPassword=prompt('Crea tu nueva contraseña (mínimo 6 caracteres):');
+   if(newPassword && newPassword.length>=6){
+     const {error}=await sb.auth.updateUser({password:newPassword});
+     if(error) alert('No se pudo cambiar la contraseña. Inténtalo nuevamente.');
+     else { alert('Contraseña actualizada correctamente.'); await start(); }
+   }
+ }
+});
+
+async function requestTrip(){
+ const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
+ if(!destination||fare<=0){msg('passengerMsg','Completa destino y precio.');return}
+ const commission=0; // promoción inicial configurada en la base
+ const {error}=await sb.from('trips').insert({passenger_id:profile.id,destination_text:destination,vehicle_type:vehicle,estimated_fare:fare,commission_rate:commission,holyn_commission:0,driver_amount:fare,payment_method:payment,status:'requested'});
+ if(error){msg('passengerMsg','No se pudo solicitar: '+error.message);return}
+ msg('passengerMsg','🚕 Solicitud enviada. Buscando conductor...');
+ loadPassenger();
+}
+async function loadPassenger(){
+ const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>`<p><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()} · ${t.payment_method==='card'?'Tarjeta':'Efectivo'} · <b>${t.status}</b></p>`).join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+}
+async function toggleOnline(){
+ const r=await sb.from('driver_profiles').upsert({user_id:profile.id,is_online:true},{onConflict:'user_id'});
+ if(r.error){msg('driverMsg','No se pudo cambiar estado: '+r.error.message);return}
+ msg('driverMsg','🟢 Estás EN LÍNEA.');loadDriver();
+}
+async function loadDriver(){
+ const {data:dp}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
+ document.getElementById('onlineBtn').textContent=dp?.is_online?'🟢 EN LÍNEA':'Ponerme EN LÍNEA';
+ const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(20);
+ document.getElementById('requests').innerHTML=error?'<p>'+error.message+'</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>';
+ const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
+ document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>`<p>${t.destination_text} · Gs. ${Number(t.estimated_fare).toLocaleString()} · <b>${t.status}</b></p>`).join('')||'<span class="muted">Sin viajes asignados.</span>';
+}
+async function acceptTrip(id){
+ const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
+ if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
+ msg('driverMsg','✅ Viaje aceptado.');loadDriver();
+}
+async function loadAdmin(){
+ const [tr,dr,pa]=await Promise.all([
+  sb.from('trips').select('*',{count:'exact',head:true}),
+  sb.from('profiles').select('*',{count:'exact',head:true}).eq('role','driver'),
+  sb.from('profiles').select('*',{count:'exact',head:true}).eq('role','passenger')
+ ]);
+ document.getElementById('adminData').innerHTML=`<div class="grid"><div class="card"><h2>${tr.count||0}</h2><span class="muted">Viajes</span></div><div class="card"><h2>${dr.count||0}</h2><span class="muted">Conductores</span></div><div class="card"><h2>${pa.count||0}</h2><span class="muted">Pasajeros</span></div></div>`;
+}
+sb.auth.getSession().then(({data})=>{if(data.session)start()});
+</script>
+</body></html>
