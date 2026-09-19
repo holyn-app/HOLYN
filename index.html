@@ -50,7 +50,8 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 </div>
 
 <section id="passenger" class="hidden">
-<div class="card"><h2>🚕 Pedir un viaje</h2>
+<div class="card">
+<h2>🚕 Pedir un viaje</h2>
 <label>¿A dónde vas?</label><input id="destination" placeholder="Destino">
 <div class="grid">
 <div class="vehicle" onclick="chooseVehicle('HOLYN',this)"><b>HOLYN</b><br><span class="muted">Viaje estándar</span></div>
@@ -63,9 +64,15 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <button onclick="requestTrip()">Solicitar</button>
 <div id="passengerMsg" class="msg hidden"></div></div>
 <div class="card"><h2>Mis viajes</h2><div id="myTrips"></div></div>
+<div class="card">
+<h2>🚗 ¿Quieres conducir con HOLYN?</h2>
+<p class="muted">Puedes enviar tu solicitud de conductor sin crear otra cuenta.</p>
+<button onclick="openDriverApplication()">Quiero ser conductor</button>
+</div>
 </section>
 
 <div id="driverRegistration" class="card hidden">
+
 <h2>📝 Registro de conductor</h2>
 <p class="muted">Completa tus datos. Tu solicitud será revisada antes de habilitarte.</p>
 <label>Nombre completo</label><input id="drvName" placeholder="Nombre y apellido">
@@ -212,6 +219,12 @@ sb.auth.onAuthStateChange(async (event, session)=>{
    }
  }
 });
+
+function openDriverApplication(){
+ document.getElementById('driverRegistration').classList.remove('hidden');
+ document.getElementById('driverRegistration').scrollIntoView({behavior:'smooth',block:'start'});
+ loadDriver();
+}
 
 async function requestTrip(){
  const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
