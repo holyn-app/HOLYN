@@ -264,10 +264,16 @@ async function requestTrip(){
 }
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('myTrips').innerHTML=(data||[]).map(t=>`<p><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()} · ${t.payment_method==='card'?'Tarjeta':'Efectivo'} · <b>${t.status}</b></p>`).join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()} · ${t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo'} · <b>${t.status}</b>${t.driver_id?'<br>🚗 Conductor asignado':''}</div>`).join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ if(tripChannel)await sb.removeChannel(tripChannel);
+ tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{
+   const t=payload.new;
+   msg('passengerMsg',t.status==='accepted'?'🚗 ¡Conductor encontrado! Tu viaje fue aceptado.':t.status==='completed'?'✅ Viaje finalizado.':t.status==='cancelled'?'⚠️ Viaje cancelado.':'🔄 Tu viaje se actualizó.');
+   loadPassenger();
+ }).subscribe();
 }
 async function toggleOnline(){
- const {data:dp}=await sb.from('driver_profiles').select('is_approved,is_online').eq('user_id',profile.id).maybeSingle();
+ const {data:dp}=await sb.from('driver_profiles').select('is_approved,is_online,account_status').eq('user_id',profile.id).maybeSingle();
  if(!dp?.is_approved){
    msg('driverMsg','🔒 Tu cuenta todavía no está aprobada por HOLYN. No puedes ponerte en línea.');
    return;
@@ -279,10 +285,30 @@ async function toggleOnline(){
    return;
  }
  msg('driverMsg',next?'🟢 Estás EN LÍNEA.':'⚪ Estás FUERA DE LÍNEA.');
+ if(next)startDriverLocation(); else stopDriverLocation();
  loadDriver();
+}
+function startDriverLocation(){
+ if(!navigator.geolocation){msg('driverMsg','Tu dispositivo no permite ubicación.');return}
+ if(locationWatchId!==null)return;
+ locationWatchId=navigator.geolocation.watchPosition(async pos=>{
+   const lat=pos.coords.latitude,lng=pos.coords.longitude;
+   await sb.from('driver_locations').upsert({driver_id:profile.id,lat,lng,updated_at:new Date().toISOString()},{onConflict:'driver_id'});
+   await sb.from('driver_profiles').update({lat,lng}).eq('user_id',profile.id);
+ },()=>msg('driverMsg','⚠️ Permite la ubicación para recibir y realizar viajes.'),{enableHighAccuracy:true,maximumAge:10000,timeout:15000});
+}
+function stopDriverLocation(){
+ if(locationWatchId!==null){navigator.geolocation.clearWatch(locationWatchId);locationWatchId=null}
 }
 async function loadDriver(){
  const {data:dp}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
+ if(dp?.is_online && dp?.is_approved)startDriverLocation();
+ if(driverChannel)await sb.removeChannel(driverChannel);
+ driverChannel=sb.channel('holyn-driver-'+profile.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'trips',filter:'status=eq.requested'},payload=>{
+   if(dp?.is_online && dp?.is_approved){msg('driverMsg','🔔 ¡Tienes una nueva solicitud de viaje!');loadDriver();}
+ }).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'driver_id=eq.'+profile.id},payload=>{
+   msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');loadDriver();
+ }).subscribe();
  const approved=dp?.is_approved===true;
  document.getElementById('driverRegistration').classList.toggle('hidden',!!dp);
  document.getElementById('driverDocuments').classList.toggle('hidden',!dp || approved); 
