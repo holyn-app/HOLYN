@@ -338,7 +338,7 @@ async function loadDriver(){
  const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(20);
  document.getElementById('requests').innerHTML=!approved?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes.</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>`<p>${t.destination_text} · Gs. ${Number(t.estimated_fare).toLocaleString()} · <b>${t.status}</b></p>`).join('')||'<span class="muted">Sin viajes asignados.</span>';
+ document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.estimated_fare).toLocaleString()+' · <b>'+t.status+'</b><br>'+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
@@ -398,7 +398,22 @@ async function uploadDriverDocuments(){
 async function acceptTrip(id){
  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
- msg('driverMsg','✅ Viaje aceptado.');loadDriver();
+ msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
+}
+async function updateTripStatus(id,status){
+ const payload={status};
+ if(status==='arrived')payload.arrived_at=new Date().toISOString();
+ if(status==='in_progress')payload.started_at=new Date().toISOString();
+ if(status==='completed')payload.completed_at=new Date().toISOString();
+ const {error}=await sb.from('trips').update(payload).eq('id',id).eq('driver_id',profile.id);
+ if(error){msg('driverMsg','No se pudo actualizar el viaje.');return}
+ msg('driverMsg',status==='arrived'?'📍 Marcaste que llegaste.':status==='in_progress'?'🚕 Viaje iniciado.':'🏁 Viaje finalizado.');loadDriver();
+}
+function tripStatusButtons(t){
+ if(t.status==='accepted')return '<button onclick="updateTripStatus(\''+t.id+'\',\'arrived\')">📍 Llegué</button>';
+ if(t.status==='arrived')return '<button onclick="updateTripStatus(\''+t.id+'\',\'in_progress\')">🚕 Iniciar viaje</button>';
+ if(t.status==='in_progress')return '<button onclick="updateTripStatus(\''+t.id+'\',\'completed\')">🏁 Finalizar viaje</button>';
+ return '';
 }
 function adminTab(tab){
  document.querySelectorAll('.adminTab').forEach(x=>x.classList.add('hidden'));
