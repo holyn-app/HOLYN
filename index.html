@@ -338,7 +338,7 @@ async function loadDriver(){
  const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(20);
  document.getElementById('requests').innerHTML=!approved?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes.</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.estimated_fare).toLocaleString()+' · <b>'+t.status+'</b><br>'+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
+ document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.estimated_fare).toLocaleString()+' · <b>'+t.status+'</b><br>'+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
@@ -395,6 +395,15 @@ async function uploadDriverDocuments(){
  }
 }
 
+async function ratePassenger(tripId,passengerId,rating){
+ const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:passengerId,rating:rating},{onConflict:'trip_id,rater_id'});
+ if(error){msg('driverMsg','No se pudo guardar la calificación.');return}
+ msg('driverMsg','⭐ Gracias por calificar al pasajero.');loadDriver();
+}
+function passengerRatingButtons(t){
+ if(t.status!=='completed'||!t.passenger_id)return '';
+ return '<div style="margin-top:8px"><b>Califica al pasajero:</b> '+[1,2,3,4,5].map(n=>'<button onclick="ratePassenger(\''+t.id+'\',\''+t.passenger_id+'\','+n+')">'+n+'⭐</button>').join(' ')+'</div>';
+}
 async function acceptTrip(id){
  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
