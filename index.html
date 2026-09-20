@@ -481,7 +481,23 @@ async function loadAdminFinance(){
  const box=document.getElementById('adminFinance');
  const [trips,settlements,settings]=await Promise.all([sb.from('trips').select('holyn_commission,driver_amount,final_fare,estimated_fare,payment_method,status'),sb.from('settlements').select('amount,status,method,created_at'),sb.from('app_settings').select('*').eq('id',1).maybeSingle()]);
  const completed=(trips.data||[]).filter(x=>x.status==='completed'); const revenue=completed.reduce((a,x)=>a+Number(x.holyn_commission||0),0); const fares=completed.reduce((a,x)=>a+Number(x.final_fare??x.estimated_fare??0),0); const pending=(settlements.data||[]).filter(x=>x.status!=='completed').reduce((a,x)=>a+Number(x.amount||0),0);
- box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión: <b>${settings.data?.commission_rate??20}%</b> · Lanzamiento: <b>${settings.data?.launch_driver_commission??0}%</b></p>`;
+ box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión posterior al lanzamiento: <b>${settings.data?.commission_rate??15}%</b> · Lanzamiento: <b>0%</b></p><h3>💵 Comisiones de efectivo pendientes</h3><div id="cashSettlements">Cargando...</div>`; loadPendingCashSettlements();
+}
+async function loadPendingCashSettlements(){
+ const box=document.getElementById('cashSettlements'); if(!box)return;
+ const {data,error}=await sb.from('settlements').select('id,driver_id,trip_id,amount,status,method,created_at').eq('method','cash_commission').neq('status','completed').order('created_at',{ascending:false}).limit(100);
+ if(error){box.innerHTML='<p>No pudimos cargar liquidaciones.</p>';return}
+ box.innerHTML=(data||[]).map(s=>`<div class="card"><b>Gs. ${Number(s.amount).toLocaleString()}</b> · Conductor: ${s.driver_id}<br><small>${new Date(s.created_at).toLocaleString()}</small><br><button onclick="markCashSettlementPaid('${s.id}','${s.driver_id}',${Number(s.amount)})">✅ Marcar cobrada</button></div>`).join('')||'<span class="muted">No hay comisiones de efectivo pendientes.</span>';
+}
+async function markCashSettlementPaid(id,driverId,amount){
+ if(!confirm('¿Confirmar que HOLYN recibió esta comisión en efectivo?'))return;
+ const {error}=await sb.from('settlements').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',id).eq('status','pending');
+ if(error){msg('adminMsg','No se pudo registrar el cobro: '+error.message);return}
+ const {data:dp}=await sb.from('driver_profiles').select('pending_cash_commission').eq('user_id',driverId).maybeSingle();
+ const next=Math.max(0,Number(dp?.pending_cash_commission||0)-amount);
+ await sb.from('driver_profiles').update({pending_cash_commission:next}).eq('user_id',driverId);
+ await logAdmin('cash_commission_collected','settlement',id,'Comisión de efectivo cobrada');
+ msg('adminMsg','✅ Comisión registrada como cobrada.'); loadAdminFinance();
 }
 async function loadAdminSettings(){
  const box=document.getElementById('adminSettings'); const {data,error}=await sb.from('app_settings').select('*').eq('id',1).maybeSingle(); if(error){box.innerHTML='<p>No pudimos cargar configuración.</p>';return}
