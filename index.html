@@ -277,7 +277,7 @@ function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.g
 function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
  const active=(data||[]).find(t=>['requested','accepted','arrived','in_progress'].includes(t.status));
  if(active){
    if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
@@ -413,6 +413,16 @@ async function rateTrip(tripId,driverId,rating){
  const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:driverId,rating:rating},{onConflict:'trip_id,rater_id'});
  if(error){msg('ratingBox','No se pudo guardar la calificación.');return}
  msg('ratingBox','⭐ Gracias por calificar a tu conductor.');loadPassenger();
+}
+function cancelTripButton(t){
+ if(!['requested','accepted'].includes(t.status))return '';
+ return '<br><button onclick="cancelTrip(\\''+t.id+'\\')">❌ Cancelar viaje</button>';
+}
+async function cancelTrip(id){
+ const reason=prompt('Motivo de cancelación:'); if(!reason)return;
+ const {error}=await sb.from('trips').update({status:'cancelled',cancellation_reason:reason,cancelled_at:new Date().toISOString()}).eq('id',id).eq('passenger_id',profile.id).in('status',['requested','accepted']);
+ if(error){msg('passengerMsg','No se pudo cancelar el viaje.');return}
+ msg('passengerMsg','⚠️ Viaje cancelado.');loadPassenger();
 }
 function ratingButtons(t){
  if(t.status!=='completed'||!t.driver_id)return '';
