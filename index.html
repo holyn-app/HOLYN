@@ -108,8 +108,16 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 </section>
 
 <section id="admin" class="hidden">
-<div class="card"><h2>🛡️ Administración</h2><p class="muted">El panel administrativo completo se conectará en la siguiente etapa.</p>
-<div id="adminData"></div></div>
+<div class="card"><h2>🛡️ Administración HOLYN</h2>
+<p class="muted">Revisión de conductores y documentos antes de habilitar viajes.</p>
+<div id="adminData"></div>
+</div>
+<div class="card">
+<h2>📋 Solicitudes de conductores</h2>
+<p class="muted">Aquí podrás revisar los datos y abrir los documentos privados antes de aprobar.</p>
+<div id="adminDrivers"><span class="muted">Cargando...</span></div>
+<div id="adminMsg" class="msg hidden"></div>
+</div>
 </section>
 </div>
 </main>
@@ -274,7 +282,7 @@ async function submitDriverRegistration(){
  const ids=['drvName','drvPhone','drvId','drvLicense','drvLicenseExpiry','drvMake','drvModel','drvYear','drvPlate'];
  if(ids.some(id=>!document.getElementById(id).value.trim())){msg('registrationMsg','Completa todos los datos.');return}
  if(year<2009){msg('registrationMsg','❌ HOLYN no admite vehículos modelo 2008 o anteriores.');return}
- const info={user_id:profile.id,is_online:false,is_approved:false,verification_status:'pending',license_number:document.getElementById('drvLicense').value.trim(),license_expiry:document.getElementById('drvLicenseExpiry').value,vehicle_type:document.getElementById('drvService').value,vehicle_model:document.getElementById('drvMake').value.trim()+' '+document.getElementById('drvModel').value.trim(),vehicle_year:year,plate:document.getElementById('drvPlate').value.trim()};
+ const info={user_id:profile.id,is_online:false,is_approved:false,verification_status:'pending',full_name:document.getElementById('drvName').value.trim(),phone:document.getElementById('drvPhone').value.trim(),document_id:document.getElementById('drvId').value.trim(),license_number:document.getElementById('drvLicense').value.trim(),license_expiry:document.getElementById('drvLicenseExpiry').value,vehicle_type:document.getElementById('drvService').value,vehicle_model:document.getElementById('drvMake').value.trim()+' '+document.getElementById('drvModel').value.trim(),vehicle_year:year,plate:document.getElementById('drvPlate').value.trim()};
  const {error}=await sb.from('driver_profiles').upsert(info,{onConflict:'user_id'});
  if(error){console.error('HOLYN driver registration error',error);msg('registrationMsg','No pudimos enviar la solicitud. Código: '+(error.code||'')+' — '+(error.message||'Error de base de datos'));return}
  await sb.auth.updateUser({data:{full_name:document.getElementById('drvName').value.trim(),phone:document.getElementById('drvPhone').value.trim(),document_id:document.getElementById('drvId').value.trim(),driver_service:document.getElementById('drvService').value}});
@@ -336,6 +344,53 @@ async function loadAdmin(){
   sb.from('profiles').select('*',{count:'exact',head:true}).eq('role','passenger')
  ]);
  document.getElementById('adminData').innerHTML=`<div class="grid"><div class="card"><h2>${tr.count||0}</h2><span class="muted">Viajes</span></div><div class="card"><h2>${dr.count||0}</h2><span class="muted">Conductores</span></div><div class="card"><h2>${pa.count||0}</h2><span class="muted">Pasajeros</span></div></div>`;
+ await loadAdminDrivers();
+}
+async function loadAdminDrivers(){
+ const box=document.getElementById('adminDrivers');
+ const {data,error}=await sb.from('driver_profiles').select('*').order('created_at',{ascending:false});
+ if(error){box.innerHTML='<p>No pudimos cargar las solicitudes: '+error.message+'</p>';return}
+ if(!data?.length){box.innerHTML='<span class="muted">No hay solicitudes de conductores.</span>';return}
+ box.innerHTML=data.map(d=>{
+   const status=d.is_approved?'approved':(d.verification_status||'pending');
+   const label=status==='approved'?'✅ APROBADO':status==='rejected'?'❌ RECHAZADO':'🟡 PENDIENTE';
+   return `<div class="card" style="margin-top:12px">
+   <h3>${label} — ${d.full_name||'Conductor'}</h3>
+   <p><b>Teléfono:</b> ${d.phone||'—'} · <b>Cédula:</b> ${d.document_id||'—'}</p>
+   <p><b>Licencia:</b> ${d.license_number||'—'} · <b>Vencimiento:</b> ${d.license_expiry||'—'}</p>
+   <p><b>Vehículo:</b> ${d.vehicle_model||'—'} · <b>Año:</b> ${d.vehicle_year||'—'} · <b>Chapa:</b> ${d.plate||'—'} · <b>Servicio:</b> ${d.vehicle_type||'—'}</p>
+   <div id="docs-${d.user_id}"><span class="muted">Cargando documentos...</span></div>
+   <div style="margin-top:10px">
+    <button onclick="reviewDriver('${d.user_id}','approved')">✅ Aprobar</button>
+    <button onclick="reviewDriver('${d.user_id}','rejected')">❌ Rechazar</button>
+    <button onclick="reviewDriver('${d.user_id}','needs_more_docs')">📄 Pedir más documentos</button>
+   </div>
+   </div>`;
+ }).join('');
+ for(const d of data) await loadAdminDriverDocs(d.user_id);
+}
+async function loadAdminDriverDocs(driverId){
+ const box=document.getElementById('docs-'+driverId); if(!box)return;
+ const {data,error}=await sb.from('driver_verification_documents').select('*').eq('driver_id',driverId).order('document_type');
+ if(error){box.innerHTML='<p>No pudimos cargar documentos.</p>';return}
+ const names={driver_face:'📸 Rostro',license_front:'🪪 Licencia frente',license_back:'🪪 Licencia dorso',vehicle_card_front:'🚘 Cédula frente',vehicle_card_back:'🚘 Cédula dorso'};
+ const rows=[];
+ for(const d of (data||[])){
+   const signed=await sb.storage.from('driver-documents').createSignedUrl(d.storage_path,600);
+   rows.push(`<span style="display:inline-block;margin:4px 6px 4px 0"><a href="${signed.data?.signedUrl||'#'}" target="_blank" rel="noopener">${names[d.document_type]||d.document_type} — Ver</a> · <b>${d.status||'pending'}</b></span>`);
+ }
+ box.innerHTML=rows.join('<br>')||'<span class="muted">No hay documentos cargados.</span>';
+}
+async function reviewDriver(driverId,action){
+ let status='pending',approved=false,message='Solicitud actualizada.';
+ if(action==='approved'){status='approved';approved=true;message='✅ Conductor aprobado. Ya puede ponerse en línea.'}
+ if(action==='rejected'){status='rejected';approved=false;message='❌ Conductor rechazado.'}
+ if(action==='needs_more_docs'){status='needs_more_docs';approved=false;message='📄 Se marcó para solicitar documentación adicional.'}
+ const {error}=await sb.from('driver_profiles').update({verification_status:status,is_approved:approved,is_online:false}).eq('user_id',driverId);
+ if(error){msg('adminMsg','No se pudo actualizar: '+error.message);return}
+ await sb.from('driver_verification_documents').update({status:action==='approved'?'approved':action==='rejected'?'rejected':'needs_more_docs',reviewed_by:profile.id,reviewed_at:new Date().toISOString()}).eq('driver_id',driverId);
+ msg('adminMsg',message);
+ await loadAdminDrivers();
 }
 sb.auth.getSession().then(({data})=>{if(data.session)start()});
 </script>
