@@ -416,13 +416,7 @@ async function rateTrip(tripId,driverId,rating){
 }
 function cancelTripButton(t){
  if(!['requested','accepted'].includes(t.status))return '';
- return '<br><button onclick="cancelTrip(\\''+t.id+'\\')">❌ Cancelar viaje</button>';
-}
-async function cancelTrip(id){
- const reason=prompt('Motivo de cancelación:'); if(!reason)return;
- const {error}=await sb.from('trips').update({status:'cancelled',cancellation_reason:reason,cancelled_at:new Date().toISOString()}).eq('id',id).eq('passenger_id',profile.id).in('status',['requested','accepted']);
- if(error){msg('passengerMsg','No se pudo cancelar el viaje.');return}
- msg('passengerMsg','⚠️ Viaje cancelado.');loadPassenger();
+ return '<br><button onclick="cancelTrip(\"' + t.id + '\")">❌ Cancelar viaje</button>';
 }
 function ratingButtons(t){
  if(t.status!=='completed'||!t.driver_id)return '';
