@@ -366,7 +366,13 @@ async function logAdmin(action,targetType,targetId,reason){
 async function loadAdminPassengers(){
  const box=document.getElementById('adminPassengers'); const {data,error}=await sb.from('profiles').select('id,full_name,phone,role,rating,is_active,created_at').eq('role','passenger').order('created_at',{ascending:false}).limit(100);
  if(error){box.innerHTML='<p>No pudimos cargar pasajeros.</p>';return}
- box.innerHTML=(data||[]).map(p=>`<div class="card"><b>${p.full_name||'Sin nombre'}</b><br>${p.phone||'Sin teléfono'} · ⭐ ${p.rating??'—'} · ${p.is_active?'🟢 Activo':'🔴 Cerrado'}<br><small>${new Date(p.created_at).toLocaleString()}</small></div>`).join('')||'<span class="muted">No hay pasajeros.</span>';
+ box.innerHTML=(data||[]).map(p=>`<div class="card"><b>${p.full_name||'Sin nombre'}</b><br>${p.phone||'Sin teléfono'} · ⭐ ${p.rating??'—'} · ${p.is_active?'🟢 Activo':'🔴 Cerrado'}<br><small>${new Date(p.created_at).toLocaleString()}</small><br><button onclick="togglePassengerAccount('${p.id}',${p.is_active?'false':'true'})">${p.is_active?'🔒 Cerrar cuenta':'🟢 Reactivar cuenta'}</button></div>`).join('')||'<span class="muted">No hay pasajeros.</span>';
+}
+async function togglePassengerAccount(id,active){
+ const reason=prompt(active?'Motivo para reactivar:':'Motivo para cerrar la cuenta:'); if(!reason)return;
+ const {error}=await sb.from('profiles').update({is_active:active}).eq('id',id);
+ if(error){msg('adminMsg','No se pudo actualizar la cuenta: '+error.message);return}
+ await logAdmin(active?'activate_passenger':'suspend_passenger','passenger',id,reason); msg('adminMsg',active?'🟢 Pasajero reactivado.':'🔒 Cuenta de pasajero cerrada.'); loadAdminPassengers();
 }
 async function loadAdminTrips(){
  const box=document.getElementById('adminTrips'); const {data,error}=await sb.from('trips').select('id,passenger_id,driver_id,destination_text,vehicle_type,estimated_fare,final_fare,holyn_commission,driver_amount,payment_method,status,requested_at').order('requested_at',{ascending:false}).limit(100);
