@@ -276,7 +276,7 @@ async function submitDriverRegistration(){
  if(year<2009){msg('registrationMsg','❌ HOLYN no admite vehículos modelo 2008 o anteriores.');return}
  const info={user_id:profile.id,is_online:false,is_approved:false,verification_status:'pending',license_number:document.getElementById('drvLicense').value.trim(),license_expiry:document.getElementById('drvLicenseExpiry').value,vehicle_type:document.getElementById('drvService').value,vehicle_model:document.getElementById('drvMake').value.trim()+' '+document.getElementById('drvModel').value.trim(),vehicle_year:year,plate:document.getElementById('drvPlate').value.trim()};
  const {error}=await sb.from('driver_profiles').upsert(info,{onConflict:'user_id'});
- if(error){msg('registrationMsg','No pudimos enviar la solicitud. Inténtalo nuevamente.');return}
+ if(error){console.error('HOLYN driver registration error',error);msg('registrationMsg','No pudimos enviar la solicitud. Código: '+(error.code||'')+' — '+(error.message||'Error de base de datos'));return}
  await sb.auth.updateUser({data:{full_name:document.getElementById('drvName').value.trim(),phone:document.getElementById('drvPhone').value.trim(),document_id:document.getElementById('drvId').value.trim(),driver_service:document.getElementById('drvService').value}});
  msg('registrationMsg','✅ Datos recibidos. Ahora adjunta los 5 documentos para completar la verificación.');
  loadDriver();
