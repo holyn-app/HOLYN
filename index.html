@@ -265,9 +265,19 @@ async function loadPassenger(){
  document.getElementById('myTrips').innerHTML=(data||[]).map(t=>`<p><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()} · ${t.payment_method==='card'?'Tarjeta':'Efectivo'} · <b>${t.status}</b></p>`).join('')||'<span class="muted">Todavía no tienes viajes.</span>';
 }
 async function toggleOnline(){
- const r=await sb.from('driver_profiles').upsert({user_id:profile.id,is_online:true},{onConflict:'user_id'});
- if(r.error){msg('driverMsg','No se pudo cambiar estado: '+r.error.message);return}
- msg('driverMsg','🟢 Estás EN LÍNEA.');loadDriver();
+ const {data:dp}=await sb.from('driver_profiles').select('is_approved,is_online').eq('user_id',profile.id).maybeSingle();
+ if(!dp?.is_approved){
+   msg('driverMsg','🔒 Tu cuenta todavía no está aprobada por HOLYN. No puedes ponerte en línea.');
+   return;
+ }
+ const next=!dp.is_online;
+ const r=await sb.from('driver_profiles').update({is_online:next}).eq('user_id',profile.id);
+ if(r.error){
+   msg('driverMsg',r.error.message==='DRIVER_NOT_APPROVED'?'🔒 Tu cuenta no está aprobada.':('No se pudo cambiar estado: '+r.error.message));
+   return;
+ }
+ msg('driverMsg',next?'🟢 Estás EN LÍNEA.':'⚪ Estás FUERA DE LÍNEA.');
+ loadDriver();
 }
 async function loadDriver(){
  const {data:dp}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
