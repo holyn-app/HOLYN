@@ -18,7 +18,7 @@ input,select{width:100%;padding:13px;border-radius:10px;border:1px solid #36506c
 .vehicle{padding:15px;border:1px solid #315070;border-radius:14px;cursor:pointer}.vehicle.active{border-color:#27a7ff;background:#123653}
 table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px solid #29435f;text-align:left}
  .adminnav{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.adminnav button{margin:0}.adminTab.hidden{display:none!important}</style>
-</head>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script></head>
 <body>
 <header><div class="logo">HOL<span>YN</span></div><div class="muted">Tu camino, más fácil.</div></header>
 <main>
@@ -63,7 +63,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <label>Precio estimado (Gs.)</label><input id="fare" type="number" value="30000">
 <button onclick="requestTrip()">Solicitar</button>
 <div id="passengerMsg" class="msg hidden"></div></div>
-<div class="card"><h2>Mis viajes</h2><div id="myTrips"></div></div>
+<div class="card"><h2>🗺️ Seguimiento del viaje</h2><div id="tripMap" style="height:300px;border-radius:16px;overflow:hidden"></div><div id="tripTrackingMsg" class="msg hidden"></div></div><div class="card"><h2>Mis viajes</h2><div id="myTrips"></div></div>
 <div class="card">
 <h2>🚗 ¿Quieres conducir con HOLYN?</h2>
 <p class="muted">Puedes enviar tu solicitud de conductor sin crear otra cuenta.</p>
@@ -128,6 +128,7 @@ const SUPABASE_URL="https://ambngomuefjsopcunoqa.supabase.co";
 const SUPABASE_KEY="sb_publishable_D9AK6Jwb99wIBHJ7LkGhWg_uvCIxjzW";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let profile=null, vehicle="HOLYN";
+let tripChannel=null, passengerLocationWatch=null, passengerLocation=null, passengerLocationChannel=null, tripMap=null, passengerMarker=null, driverMarker=null, routeLine=null;
 
 function msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
 function chooseVehicle(v,el){vehicle=v;document.querySelectorAll('.vehicle').forEach(x=>x.classList.remove('active'));el.classList.add('active')}
@@ -256,21 +257,40 @@ function openDriverApplication(){
 async function requestTrip(){
  const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
  if(!destination||fare<=0){msg('passengerMsg','Completa destino y precio.');return}
- const commission=0; // promoción inicial configurada en la base
- const {error}=await sb.from('trips').insert({passenger_id:profile.id,destination_text:destination,vehicle_type:vehicle,estimated_fare:fare,commission_rate:commission,holyn_commission:0,driver_amount:fare,payment_method:payment,status:'requested'});
- if(error){msg('passengerMsg','No se pudo solicitar: '+error.message);return}
+ msg('passengerMsg','📍 Obteniendo tu ubicación y preparando el viaje...');
+ const origin=await getCurrentPosition();
+ if(!origin){msg('passengerMsg','⚠️ Necesitamos tu ubicación para solicitar el viaje. Activa la ubicación del dispositivo e inténtalo nuevamente.');return}
+ const dest=await geocodeDestination(destination);
+ if(!dest){msg('passengerMsg','No pudimos encontrar ese destino. Prueba con una dirección o lugar más específico.');return}
+ passengerLocation=origin;
+ const {error}=await sb.from('trips').insert({passenger_id:profile.id,origin_text:'Ubicación actual',origin_lat:origin.lat,origin_lng:origin.lng,destination_text:destination,destination_lat:dest.lat,destination_lng:dest.lng,vehicle_type:vehicle,estimated_fare:fare,commission_rate:0,holyn_commission:0,driver_amount:fare,payment_method:payment,status:'requested'});
+ if(error){msg('passengerMsg','No se pudo solicitar el viaje. Inténtalo nuevamente.');return}
  msg('passengerMsg','🚕 Solicitud enviada. Buscando conductor...');
  loadPassenger();
 }
+function getCurrentPosition(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,maximumAge:10000,timeout:15000})})}
+async function geocodeDestination(q){try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=py&q='+encodeURIComponent(q));const d=await r.json();return d&&d.length?{lat:Number(d[0].lat),lng:Number(d[0].lon)}:null}catch(e){return null}}
+async function drawRoute(o,d){try{const r=await fetch('https://router.project-osrm.org/route/v1/driving/'+o.lng+','+o.lat+';'+d.lng+','+d.lat+'?overview=full&geometries=geojson');const j=await r.json();if(!j.routes||!j.routes.length)return;const coords=j.routes[0].geometry.coordinates.map(x=>[x[1],x[0]]);if(routeLine)routeLine.setLatLngs(coords);else routeLine=L.polyline(coords,{weight:5}).addTo(tripMap);tripMap.fitBounds(routeLine.getBounds(),{padding:[30,30]});msg('tripTrackingMsg','🗺️ Ruta: '+(j.routes[0].distance/1000).toFixed(1)+' km · '+Math.round(j.routes[0].duration/60)+' min aprox.')}catch(e){}}
+function initTripMap(lat,lng){const el=document.getElementById('tripMap');if(!el||typeof L==='undefined')return;if(!tripMap){tripMap=L.map(el).setView([lat,lng],14);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(tripMap)}else tripMap.setView([lat,lng],14);if(passengerMarker)passengerMarker.setLatLng([lat,lng]);else passengerMarker=L.marker([lat,lng]).addTo(tripMap).bindPopup('Tu ubicación')}
+function updateDriverMarker(lat,lng){if(!tripMap)return;if(driverMarker)driverMarker.setLatLng([lat,lng]);else driverMarker=L.marker([lat,lng]).addTo(tripMap).bindPopup('Conductor HOLYN')}
+function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.geolocation)return;passengerLocationWatch=navigator.geolocation.watchPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};if(passengerMarker)passengerMarker.setLatLng([p.coords.latitude,p.coords.longitude])},()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:15000})}
+function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('myTrips').innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()} · ${t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo'} · <b>${t.status}</b>${t.driver_id?'<br>🚗 Conductor asignado':''}</div>`).join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.estimated_fare).toLocaleString()+' · '+(t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ const active=(data||[]).find(t=>['requested','accepted','arrived','in_progress'].includes(t.status));
+ if(active){
+   if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
+   if(active.destination_lat&&active.destination_lng&&tripMap&&passengerLocation)drawRoute(passengerLocation,{lat:Number(active.destination_lat),lng:Number(active.destination_lng)});
+   if(active.driver_id){
+     if(passengerLocationChannel)await sb.removeChannel(passengerLocationChannel);
+     passengerLocationChannel=sb.channel('holyn-driver-location-'+active.driver_id).on('postgres_changes',{event:'*',schema:'public',table:'driver_locations',filter:'driver_id=eq.'+active.driver_id},payload=>{const p=payload.new;if(p&&p.lat&&p.lng){updateDriverMarker(Number(p.lat),Number(p.lng));msg('tripTrackingMsg','🚗 Ubicación del conductor actualizada en tiempo real.')}}).subscribe();
+     const {data:dl}=await sb.from('driver_locations').select('lat,lng,updated_at').eq('driver_id',active.driver_id).maybeSingle();
+     if(dl&&dl.lat&&dl.lng)updateDriverMarker(Number(dl.lat),Number(dl.lng));
+   }else msg('tripTrackingMsg','Buscando un conductor cercano...');
+ }else{stopPassengerLocation();if(passengerLocationChannel){await sb.removeChannel(passengerLocationChannel);passengerLocationChannel=null}}
  if(tripChannel)await sb.removeChannel(tripChannel);
- tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{
-   const t=payload.new;
-   msg('passengerMsg',t.status==='accepted'?'🚗 ¡Conductor encontrado! Tu viaje fue aceptado.':t.status==='completed'?'✅ Viaje finalizado.':t.status==='cancelled'?'⚠️ Viaje cancelado.':'🔄 Tu viaje se actualizó.');
-   loadPassenger();
- }).subscribe();
+ tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{const t=payload.new;msg('passengerMsg',t.status==='accepted'?'🚗 ¡Conductor encontrado! Tu viaje fue aceptado.':t.status==='completed'?'✅ Viaje finalizado.':t.status==='cancelled'?'⚠️ Viaje cancelado.':'🔄 Tu viaje se actualizó.');loadPassenger()}).subscribe();
 }
 async function toggleOnline(){
  const {data:dp}=await sb.from('driver_profiles').select('is_approved,is_online,account_status').eq('user_id',profile.id).maybeSingle();
