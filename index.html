@@ -204,6 +204,11 @@ async function start(){
    full_name:user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
    role:fallbackRole
  };
+ // Cuenta administradora de HOLYN. Las operaciones reales siguen protegidas por RLS en Supabase.
+ if((user.email||'').toLowerCase()==='rosalesoreanna45@gmail.com'){
+   profile.role='admin';
+   profile.full_name=profile.full_name || 'oreanna';
+ }
  document.getElementById('auth').classList.add('hidden');
  document.getElementById('app').classList.remove('hidden');
  document.getElementById('who').textContent=(profile.full_name||user.email)+' — '+profile.role;
