@@ -17,7 +17,7 @@ input,select{width:100%;padding:13px;border-radius:10px;border:1px solid #36506c
 .hidden{display:none}.msg{padding:12px;border-radius:10px;background:#0a3149;margin:10px 0}.muted{color:#a9bad0;font-size:14px}
 .vehicle{padding:15px;border:1px solid #315070;border-radius:14px;cursor:pointer}.vehicle.active{border-color:#27a7ff;background:#123653}
 table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px solid #29435f;text-align:left}
-</style>
+ .adminnav{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.adminnav button{margin:0}.adminTab.hidden{display:none!important}</style>
 </head>
 <body>
 <header><div class="logo">HOL<span>YN</span></div><div class="muted">Tu camino, más fácil.</div></header>
@@ -108,17 +108,19 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 </section>
 
 <section id="admin" class="hidden">
-<div class="card"><h2>🛡️ Administración HOLYN</h2>
-<p class="muted">Revisión de conductores y documentos antes de habilitar viajes.</p>
-<div id="adminData"></div>
-</div>
-<div class="card">
-<h2>📋 Solicitudes de conductores</h2>
-<p class="muted">Aquí podrás revisar los datos y abrir los documentos privados antes de aprobar.</p>
-<div id="adminDrivers"><span class="muted">Cargando...</span></div>
-<div id="adminMsg" class="msg hidden"></div>
-</div>
-</section>
+<div class="card"><h2>🛡️ Centro de Control HOLYN</h2><p class="muted">Todo el control de la operación desde un solo lugar.</p>
+<div class="adminnav">
+<button onclick="adminTab('dashboard')">📊 Panel</button><button onclick="adminTab('drivers')">🚗 Conductores</button><button onclick="adminTab('passengers')">👤 Pasajeros</button><button onclick="adminTab('trips')">🧾 Viajes</button><button onclick="adminTab('support')">💬 Soporte</button><button onclick="adminTab('finance')">💰 Finanzas</button><button onclick="adminTab('settings')">⚙️ Configuración</button><button onclick="adminTab('activity')">🛡️ Actividad</button>
+</div></div>
+<div id="adminDashboard" class="adminTab"><div id="adminData"></div><div id="adminAlerts" class="card"></div></div>
+<div id="adminDriversTab" class="adminTab hidden"><div class="card"><h2>🚗 Conductores</h2><div id="adminDrivers">Cargando...</div></div></div>
+<div id="adminPassengersTab" class="adminTab hidden"><div class="card"><h2>👤 Pasajeros</h2><div id="adminPassengers">Cargando...</div></div></div>
+<div id="adminTripsTab" class="adminTab hidden"><div class="card"><h2>🧾 Viajes</h2><div id="adminTrips">Cargando...</div></div></div>
+<div id="adminSupportTab" class="adminTab hidden"><div class="card"><h2>💬 Soporte</h2><div id="adminSupport">Cargando...</div></div></div>
+<div id="adminFinanceTab" class="adminTab hidden"><div class="card"><h2>💰 Finanzas</h2><div id="adminFinance">Cargando...</div></div></div>
+<div id="adminSettingsTab" class="adminTab hidden"><div class="card"><h2>⚙️ Configuración</h2><div id="adminSettings">Cargando...</div></div></div>
+<div id="adminActivityTab" class="adminTab hidden"><div class="card"><h2>🛡️ Registro de actividad</h2><div id="adminActivity">Cargando...</div></div></div>
+<div id="adminMsg" class="msg hidden"></div></section>
 </div>
 </main>
 <script>
@@ -352,6 +354,66 @@ async function acceptTrip(id){
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
  msg('driverMsg','✅ Viaje aceptado.');loadDriver();
 }
+function adminTab(tab){
+ document.querySelectorAll('.adminTab').forEach(x=>x.classList.add('hidden'));
+ const map={dashboard:'adminDashboard',drivers:'adminDriversTab',passengers:'adminPassengersTab',trips:'adminTripsTab',support:'adminSupportTab',finance:'adminFinanceTab',settings:'adminSettingsTab',activity:'adminActivityTab'};
+ document.getElementById(map[tab]||'adminDashboard')?.classList.remove('hidden');
+ if(tab==='drivers')loadAdminDrivers(); if(tab==='passengers')loadAdminPassengers(); if(tab==='trips')loadAdminTrips(); if(tab==='support')loadAdminSupport(); if(tab==='finance')loadAdminFinance(); if(tab==='settings')loadAdminSettings(); if(tab==='activity')loadAdminActivity();
+}
+async function logAdmin(action,targetType,targetId,reason){
+ const {error}=await sb.from('admin_activity').insert({admin_id:profile.id,action,target_type:targetType||null,target_id:targetId||null,reason:reason||null}); return !error;
+}
+async function loadAdminPassengers(){
+ const box=document.getElementById('adminPassengers'); const {data,error}=await sb.from('profiles').select('id,full_name,phone,role,rating,is_active,created_at').eq('role','passenger').order('created_at',{ascending:false}).limit(100);
+ if(error){box.innerHTML='<p>No pudimos cargar pasajeros.</p>';return}
+ box.innerHTML=(data||[]).map(p=>`<div class="card"><b>${p.full_name||'Sin nombre'}</b><br>${p.phone||'Sin teléfono'} · ⭐ ${p.rating??'—'} · ${p.is_active?'🟢 Activo':'🔴 Cerrado'}<br><small>${new Date(p.created_at).toLocaleString()}</small></div>`).join('')||'<span class="muted">No hay pasajeros.</span>';
+}
+async function loadAdminTrips(){
+ const box=document.getElementById('adminTrips'); const {data,error}=await sb.from('trips').select('id,passenger_id,driver_id,destination_text,vehicle_type,estimated_fare,final_fare,holyn_commission,driver_amount,payment_method,status,requested_at').order('requested_at',{ascending:false}).limit(100);
+ if(error){box.innerHTML='<p>No pudimos cargar viajes.</p>';return}
+ box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
+}
+async function loadAdminSupport(){
+ const box=document.getElementById('adminSupport'); const {data,error}=await sb.from('support_tickets').select('*').order('created_at',{ascending:false}).limit(100);
+ if(error){box.innerHTML='<p>No pudimos cargar soporte.</p>';return}
+ box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.subject}</b> · <b>${t.status}</b> · prioridad ${t.priority}<p>${t.message}</p>${t.admin_response?'<p><b>Respuesta:</b> '+t.admin_response+'</p>':''}<button onclick="updateSupport('${t.id}','in_process')">En proceso</button> <button onclick="respondSupport('${t.id}')">Responder</button> <button onclick="updateSupport('${t.id}','resolved')">Resolver</button></div>`).join('')||'<span class="muted">No hay tickets.</span>';
+}
+async function updateSupport(id,status){
+ const payload={status}; if(status==='resolved')payload.resolved_at=new Date().toISOString();
+ const {error}=await sb.from('support_tickets').update(payload).eq('id',id); if(error){msg('adminMsg','No se pudo actualizar soporte: '+error.message);return}
+ await logAdmin('support_'+status,'support_ticket',id,null); msg('adminMsg','✅ Soporte actualizado.'); loadAdminSupport();
+}
+async function respondSupport(id){
+ const response=prompt('Escribe la respuesta para el cliente:'); if(!response)return;
+ const {error}=await sb.from('support_tickets').update({admin_response:response,status:'in_process'}).eq('id',id); if(error){msg('adminMsg','No se pudo responder: '+error.message);return}
+ await logAdmin('support_response','support_ticket',id,response); msg('adminMsg','✅ Respuesta guardada.'); loadAdminSupport();
+}
+async function loadAdminFinance(){
+ const box=document.getElementById('adminFinance');
+ const [trips,settlements,settings]=await Promise.all([sb.from('trips').select('holyn_commission,driver_amount,final_fare,estimated_fare,payment_method,status'),sb.from('settlements').select('amount,status,method,created_at'),sb.from('app_settings').select('*').eq('id',1).maybeSingle()]);
+ const completed=(trips.data||[]).filter(x=>x.status==='completed'); const revenue=completed.reduce((a,x)=>a+Number(x.holyn_commission||0),0); const fares=completed.reduce((a,x)=>a+Number(x.final_fare??x.estimated_fare??0),0); const pending=(settlements.data||[]).filter(x=>x.status!=='completed').reduce((a,x)=>a+Number(x.amount||0),0);
+ box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión: <b>${settings.data?.commission_rate??20}%</b> · Lanzamiento: <b>${settings.data?.launch_driver_commission??0}%</b></p>`;
+}
+async function loadAdminSettings(){
+ const box=document.getElementById('adminSettings'); const {data,error}=await sb.from('app_settings').select('*').eq('id',1).maybeSingle(); if(error){box.innerHTML='<p>No pudimos cargar configuración.</p>';return}
+ const d=data||{commission_rate:20,minimum_vehicle_year:2009,launch_driver_commission:0};
+ box.innerHTML=`<label>Comisión general (%)<br><input id="setCommission" type="number" min="0" max="100" value="${d.commission_rate}"></label><br><label>Año mínimo del vehículo<br><input id="setYear" type="number" value="${d.minimum_vehicle_year}"></label><br><label>Comisión de lanzamiento (%)<br><input id="setLaunch" type="number" min="0" max="100" value="${d.launch_driver_commission}"></label><br><button onclick="saveAdminSettings()">Guardar configuración</button>`;
+}
+async function saveAdminSettings(){
+ const payload={commission_rate:Number(document.getElementById('setCommission').value),minimum_vehicle_year:Number(document.getElementById('setYear').value),launch_driver_commission:Number(document.getElementById('setLaunch').value),updated_at:new Date().toISOString()};
+ const {error}=await sb.from('app_settings').update(payload).eq('id',1); if(error){msg('adminMsg','No se pudo guardar: '+error.message);return}
+ await logAdmin('update_settings','app_settings',null,'Configuración actualizada'); msg('adminMsg','✅ Configuración guardada.');
+}
+async function loadAdminActivity(){
+ const box=document.getElementById('adminActivity'); const {data,error}=await sb.from('admin_activity').select('*').order('created_at',{ascending:false}).limit(100); if(error){box.innerHTML='<p>No pudimos cargar actividad.</p>';return}
+ box.innerHTML=(data||[]).map(a=>`<div class="card"><b>${a.action}</b> · ${a.target_type||''}<br>${a.reason||'Sin motivo registrado'}<br><small>${new Date(a.created_at).toLocaleString()}</small></div>`).join('')||'<span class="muted">Todavía no hay actividad.</span>';
+}
+async function toggleDriverAccount(driverId,action){
+ const reason=prompt(action==='suspend'?'Motivo de suspensión:':'Motivo para reactivar:'); if(!reason)return;
+ const payload=action==='suspend'?{account_status:'suspended',is_online:false,suspension_reason:reason,suspended_at:new Date().toISOString(),suspended_by:profile.id}:{account_status:'active',suspension_reason:null,suspended_at:null,suspended_by:null};
+ const {error}=await sb.from('driver_profiles').update(payload).eq('user_id',driverId); if(error){msg('adminMsg','No se pudo actualizar la cuenta: '+error.message);return}
+ await logAdmin(action==='suspend'?'suspend_driver':'activate_driver','driver',driverId,reason); msg('adminMsg',action==='suspend'?'🔒 Conductor suspendido.':'🟢 Conductor reactivado.'); loadAdminDrivers();
+}
 async function loadAdmin(){
  const [tr,dr,pa]=await Promise.all([
   sb.from('trips').select('*',{count:'exact',head:true}),
@@ -360,6 +422,7 @@ async function loadAdmin(){
  ]);
  document.getElementById('adminData').innerHTML=`<div class="grid"><div class="card"><h2>${tr.count||0}</h2><span class="muted">Viajes</span></div><div class="card"><h2>${dr.count||0}</h2><span class="muted">Conductores</span></div><div class="card"><h2>${pa.count||0}</h2><span class="muted">Pasajeros</span></div></div>`;
  await loadAdminDrivers();
+ await loadAdminSettings(); await loadAdminPassengers();
 }
 async function loadAdminDrivers(){
  const box=document.getElementById('adminDrivers');
@@ -368,7 +431,7 @@ async function loadAdminDrivers(){
  if(!data?.length){box.innerHTML='<span class="muted">No hay solicitudes de conductores.</span>';return}
  box.innerHTML=data.map(d=>{
    const status=d.is_approved?'approved':(d.verification_status||'pending');
-   const label=status==='approved'?'✅ APROBADO':status==='rejected'?'❌ RECHAZADO':'🟡 PENDIENTE';
+   const label=status==='approved'?'✅ APROBADO':status==='rejected'?'❌ RECHAZADO':status==='needs_more_docs'?'📄 FALTAN DOCUMENTOS':'🟡 PENDIENTE';
    return `<div class="card" style="margin-top:12px">
    <h3>${label} — ${d.full_name||'Conductor'}</h3>
    <p><b>Teléfono:</b> ${d.phone||'—'} · <b>Cédula:</b> ${d.document_id||'—'}</p>
@@ -379,6 +442,7 @@ async function loadAdminDrivers(){
     <button onclick="reviewDriver('${d.user_id}','approved')">✅ Aprobar</button>
     <button onclick="reviewDriver('${d.user_id}','rejected')">❌ Rechazar</button>
     <button onclick="reviewDriver('${d.user_id}','needs_more_docs')">📄 Pedir más documentos</button>
+    <button onclick="toggleDriverAccount('${d.user_id}',${d.account_status==='suspended'?'activate':'suspend'})">${d.account_status==='suspended'?'🟢 Reactivar':'🔒 Suspender'}</button>
    </div>
    </div>`;
  }).join('');
@@ -404,6 +468,7 @@ async function reviewDriver(driverId,action){
  const {error}=await sb.from('driver_profiles').update({verification_status:status,is_approved:approved,is_online:false}).eq('user_id',driverId);
  if(error){msg('adminMsg','No se pudo actualizar: '+error.message);return}
  await sb.from('driver_verification_documents').update({status:action==='approved'?'approved':action==='rejected'?'rejected':'needs_more_docs',reviewed_by:profile.id,reviewed_at:new Date().toISOString()}).eq('driver_id',driverId);
+ await logAdmin('driver_'+action,'driver',driverId,action==='approved'?'Documentación aprobada':action==='rejected'?'Documentación rechazada':'Se solicitaron documentos adicionales');
  msg('adminMsg',message);
  await loadAdminDrivers();
 }
