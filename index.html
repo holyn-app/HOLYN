@@ -63,7 +63,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <label>Precio estimado (Gs.)</label><input id="fare" type="number" value="30000">
 <button onclick="requestTrip()">Solicitar</button>
 <div id="passengerMsg" class="msg hidden"></div></div>
-<div class="card"><h2>🗺️ Seguimiento del viaje</h2><div id="tripMap" style="height:300px;border-radius:16px;overflow:hidden"></div><div id="tripTrackingMsg" class="msg hidden"></div></div><div class="card"><h2>Mis viajes</h2><div id="myTrips"></div></div>
+<div class="card"><h2>🗺️ Seguimiento del viaje</h2><div id="tripMap" style="height:300px;border-radius:16px;overflow:hidden"></div><div id="tripTrackingMsg" class="msg hidden"></div></div><div class="card"><h2>Mis viajes</h2><div id="myTrips"></div><div id="ratingBox" class="msg hidden"></div></div>
 <div class="card">
 <h2>🚗 ¿Quieres conducir con HOLYN?</h2>
 <p class="muted">Puedes enviar tu solicitud de conductor sin crear otra cuenta.</p>
@@ -399,6 +399,15 @@ async function acceptTrip(id){
  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
  msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
+}
+async function rateTrip(tripId,driverId,rating){
+ const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:driverId,rating:rating},{onConflict:'trip_id,rater_id'});
+ if(error){msg('ratingBox','No se pudo guardar la calificación.');return}
+ msg('ratingBox','⭐ Gracias por calificar a tu conductor.');loadPassenger();
+}
+function ratingButtons(t){
+ if(t.status!=='completed'||!t.driver_id)return '';
+ return '<div style="margin-top:8px"><b>Califica tu viaje:</b> '+[1,2,3,4,5].map(n=>'<button onclick="rateTrip(\''+t.id+'\',\''+t.driver_id+'\','+n+')">'+n+'⭐</button>').join(' ')+'</div>';
 }
 async function updateTripStatus(id,status){
  const payload={status};
