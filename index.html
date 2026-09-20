@@ -338,7 +338,7 @@ async function loadDriver(){
  const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(20);
  document.getElementById('requests').innerHTML=!approved?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes.</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.estimated_fare).toLocaleString()+' · <b>'+t.status+'</b><br>'+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
+ document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo')+' · <b>'+t.status+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
