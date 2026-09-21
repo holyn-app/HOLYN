@@ -59,11 +59,16 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div class="vehicle" onclick="chooseVehicle('HOLYN Moto',this)"><b>HOLYN Moto</b><br><span class="muted">Moto</span></div>
 <div class="vehicle" onclick="chooseVehicle('Paquetería',this)"><b>📦 Paquetería</b><br><span class="muted">Entrega</span></div>
 </div>
-<label>Método de pago</label><select id="payment"><option value="cash">Efectivo</option><option value="card">Tarjeta</option></select>
+<label>Método de pago</label><select id="payment" onchange="toggleTransferBox()"><option value="bank_transfer">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
+<div id="transferBox" class="msg">
+<b>🏦 Pago por transferencia</b>
+<p class="muted">Después de solicitar el viaje te mostraremos los datos de la cuenta de HOLYN. Transferí el importe exacto y luego pulsa “Ya transferí”.</p>
+</div>
 <label>Precio estimado (Gs.)</label><input id="fare" type="number" value="30000">
 <button onclick="requestTrip()">Solicitar</button>
 <div id="passengerMsg" class="msg hidden"></div></div>
 <div class="card"><h2>🗺️ Seguimiento del viaje</h2><div id="tripMap" style="height:300px;border-radius:16px;overflow:hidden"></div><div id="tripTrackingMsg" class="msg hidden"></div></div><div class="card"><h2>Mis viajes</h2><div id="myTrips"></div><div id="ratingBox" class="msg hidden"></div></div>
+<div id="transferPaymentCard" class="card hidden"><h2>🏦 Pago de este viaje</h2><div id="transferPaymentInfo"></div></div>
 <div class="card">
 <h2>🚗 ¿Quieres conducir con HOLYN?</h2>
 <p class="muted">Puedes enviar tu solicitud de conductor sin crear otra cuenta.</p>
@@ -117,7 +122,9 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div id="adminPassengersTab" class="adminTab hidden"><div class="card"><h2>👤 Pasajeros</h2><div id="adminPassengers">Cargando...</div></div></div>
 <div id="adminTripsTab" class="adminTab hidden"><div class="card"><h2>🧾 Viajes</h2><div id="adminTrips">Cargando...</div></div></div>
 <div id="adminSupportTab" class="adminTab hidden"><div class="card"><h2>💬 Soporte</h2><div id="adminSupport">Cargando...</div></div></div>
-<div id="adminFinanceTab" class="adminTab hidden"><div class="card"><h2>💰 Finanzas</h2><div id="adminFinance">Cargando...</div></div></div>
+<div id="adminFinanceTab" class="adminTab hidden"><div class="card"><h2>💰 Finanzas</h2><div id="adminFinance">Cargando...</div></div>
+<div class="card"><h2>🏦 Transferencias pendientes de confirmar</h2><div id="adminTransferPayments">Cargando...</div></div>
+<div class="card"><h2>📅 Pagos a conductores — miércoles</h2><div id="adminWeeklyPayouts">Cargando...</div></div></div>
 <div id="adminSettingsTab" class="adminTab hidden"><div class="card"><h2>⚙️ Configuración</h2><div id="adminSettings">Cargando...</div></div></div>
 <div id="adminActivityTab" class="adminTab hidden"><div class="card"><h2>🛡️ Registro de actividad</h2><div id="adminActivity">Cargando...</div></div></div>
 <div id="adminMsg" class="msg hidden"></div></section>
@@ -216,7 +223,7 @@ async function start(){
  document.getElementById('app').classList.remove('hidden');
  document.getElementById('who').textContent=(profile.full_name||user.email)+' — '+profile.role;
  ['passenger','driver','admin'].forEach(x=>document.getElementById(x).classList.toggle('hidden',profile.role!==x));
- if(profile.role==='passenger')loadPassenger();
+ if(profile.role==='passenger'){loadPassenger();toggleTransferBox();}
  if(profile.role==='driver')loadDriver();
  if(profile.role==='admin')loadAdmin();
 }
@@ -254,6 +261,10 @@ function openDriverApplication(){
  loadDriver();
 }
 
+function toggleTransferBox(){
+ const payment=document.getElementById('payment')?.value;
+ document.getElementById('transferBox')?.classList.toggle('hidden',payment!=='bank_transfer');
+}
 async function requestTrip(){
  const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
  if(!destination||fare<=0){msg('passengerMsg','Completa destino y precio.');return}
@@ -279,18 +290,42 @@ async function requestTrip(){
    driver_amount:driverAmount,payment_method:payment,status:'requested'
  }).select('id').single();
  if(error||!trip){msg('passengerMsg','No se pudo solicitar el viaje. Inténtalo nuevamente.');return}
- msg('passengerMsg','🚕 Solicitud enviada. Buscando conductor...');
- if(payment==='card'){
-   msg('passengerMsg','💳 Preparando pago seguro con Pagopar...');
-   const {data:pay,error:payError}=await sb.functions.invoke('create-pagopar-payment',{body:{trip_id:trip.id}});
-   if(payError||!pay?.checkout_url){
-     msg('passengerMsg',payError?.message||pay?.error||'No pudimos preparar el pago con tarjeta. El viaje quedó registrado.');
-     loadPassenger();
-     return;
+ msg('passengerMsg',payment==='bank_transfer'?'🏦 Viaje creado. Realizá la transferencia para confirmar el pago.':'🚕 Solicitud enviada. Buscando conductor...');
+ if(payment==='bank_transfer'){
+   const {error:payError}=await sb.from('trip_payments').insert({
+     trip_id:trip.id,provider:'manual_transfer',amount:fare,status:'pending',payment_method:'bank_transfer'
+   });
+   if(payError){
+     msg('passengerMsg','No pudimos preparar el pago por transferencia. El viaje quedó registrado; contactá a soporte.');
+     loadPassenger(); return;
    }
-   window.location.href=pay.checkout_url;
+   await showTransferInstructions(trip.id,fare);
    return;
  }
+ loadPassenger();
+}
+async function showTransferInstructions(tripId,amount){
+ const {data:settings}=await sb.from('app_settings').select('transfer_bank,transfer_account_name,transfer_account_number,transfer_alias,transfer_qr_url').eq('id',1).maybeSingle();
+ const card=document.getElementById('transferPaymentCard'), box=document.getElementById('transferPaymentInfo');
+ if(!card||!box)return;
+ const s=settings||{};
+ box.innerHTML=`
+ <p><b>Importe a transferir: Gs. ${Number(amount).toLocaleString()}</b></p>
+ <p><b>Banco:</b> ${s.transfer_bank||'Pendiente de configurar por HOLYN'}</p>
+ <p><b>Titular:</b> ${s.transfer_account_name||'Pendiente de configurar'}</p>
+ <p><b>Cuenta:</b> ${s.transfer_account_number||'Pendiente de configurar'}</p>
+ <p><b>Alias:</b> ${s.transfer_alias||'Pendiente de configurar'}</p>
+ ${s.transfer_qr_url?`<p><img src="${s.transfer_qr_url}" alt="QR HOLYN" style="max-width:220px;border-radius:12px;background:#fff;padding:8px"></p>`:''}
+ <p class="muted">Después de transferir, pulsa el botón. HOLYN verificará el pago antes de confirmarlo.</p>
+ <button onclick="markTransferSent('${tripId}',${Number(amount)})">✅ Ya transferí</button>
+ `;
+ card.classList.remove('hidden');
+ card.scrollIntoView({behavior:'smooth',block:'start'});
+}
+async function markTransferSent(tripId,amount){
+ const {error}=await sb.from('trip_payments').update({status:'awaiting_confirmation'}).eq('trip_id',tripId).eq('payment_method','bank_transfer');
+ if(error){msg('passengerMsg','No pudimos registrar el aviso de transferencia.');return}
+ msg('passengerMsg','🟡 Aviso enviado. HOLYN verificará la transferencia.');
  loadPassenger();
 }
 function getCurrentPosition(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,maximumAge:10000,timeout:15000})})}
@@ -506,7 +541,34 @@ async function loadAdminFinance(){
  const box=document.getElementById('adminFinance');
  const [trips,settlements,settings]=await Promise.all([sb.from('trips').select('holyn_commission,driver_amount,final_fare,estimated_fare,payment_method,status'),sb.from('settlements').select('amount,status,method,created_at'),sb.from('app_settings').select('*').eq('id',1).maybeSingle()]);
  const completed=(trips.data||[]).filter(x=>x.status==='completed'); const revenue=completed.reduce((a,x)=>a+Number(x.holyn_commission||0),0); const fares=completed.reduce((a,x)=>a+Number(x.final_fare??x.estimated_fare??0),0); const pending=(settlements.data||[]).filter(x=>x.status!=='completed').reduce((a,x)=>a+Number(x.amount||0),0);
- box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión posterior al lanzamiento: <b>${settings.data?.commission_rate??15}%</b> · Lanzamiento: <b>0%</b></p><h3>💵 Comisiones de efectivo pendientes</h3><div id="cashSettlements">Cargando...</div>`; loadPendingCashSettlements();
+ box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión posterior al lanzamiento: <b>${settings.data?.commission_rate??15}%</b> · Lanzamiento: <b>0%</b></p><h3>💵 Comisiones de efectivo pendientes</h3><div id="cashSettlements">Cargando...</div>`; loadPendingCashSettlements(); loadAdminTransferPayments(); loadAdminWeeklyPayouts();
+}
+async function loadAdminTransferPayments(){
+ const box=document.getElementById('adminTransferPayments'); if(!box)return;
+ const {data,error}=await sb.from('trip_payments').select('id,trip_id,amount,status,created_at').eq('payment_method','bank_transfer').in('status',['awaiting_confirmation','pending']).order('created_at',{ascending:false}).limit(100);
+ if(error){box.innerHTML='<p>No pudimos cargar transferencias.</p>';return}
+ box.innerHTML=(data||[]).map(p=>`<div class="card"><b>Gs. ${Number(p.amount).toLocaleString()}</b> · Viaje: ${p.trip_id}<br><small>${new Date(p.created_at).toLocaleString()}</small><br><button onclick="confirmTransferPayment('${p.id}','${p.trip_id}')">✅ Confirmar transferencia</button></div>`).join('')||'<span class="muted">No hay transferencias pendientes.</span>';
+}
+async function confirmTransferPayment(paymentId,tripId){
+ if(!confirm('¿Confirmar que el dinero llegó a la cuenta de HOLYN?'))return;
+ const {error}=await sb.from('trip_payments').update({status:'paid',confirmed_by:profile.id,confirmed_at:new Date().toISOString(),paid_at:new Date().toISOString()}).eq('id',paymentId).in('status',['pending','awaiting_confirmation']);
+ if(error){msg('adminMsg','No se pudo confirmar: '+error.message);return}
+ await sb.from('trips').update({}).eq('id',tripId);
+ await logAdmin('transfer_payment_confirmed','trip_payment',paymentId,'Transferencia recibida en cuenta HOLYN');
+ msg('adminMsg','✅ Transferencia confirmada.'); loadAdminTransferPayments(); loadAdminWeeklyPayouts(); loadAdminTrips();
+}
+async function loadAdminWeeklyPayouts(){
+ const box=document.getElementById('adminWeeklyPayouts'); if(!box)return;
+ const {data,error}=await sb.from('settlements').select('id,driver_id,trip_id,amount,status,created_at,completed_at').eq('method','weekly_driver_payout').neq('status','completed').order('created_at',{ascending:false}).limit(200);
+ if(error){box.innerHTML='<p>No pudimos cargar pagos a conductores.</p>';return}
+ box.innerHTML=(data||[]).map(s=>`<div class="card"><b>Gs. ${Number(s.amount).toLocaleString()}</b> · Conductor: ${s.driver_id}<br><small>Viaje: ${s.trip_id||'—'} · Creado: ${new Date(s.created_at).toLocaleString()}</small><br><button onclick="markWeeklyPayoutPaid('${s.id}','${s.driver_id}',${Number(s.amount)})">✅ Marcar pagado</button></div>`).join('')||'<span class="muted">No hay pagos pendientes a conductores.</span>';
+}
+async function markWeeklyPayoutPaid(id,driverId,amount){
+ if(!confirm('¿Confirmar que hoy miércoles realizaste esta transferencia al conductor?'))return;
+ const {error}=await sb.from('settlements').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',id).eq('status','pending');
+ if(error){msg('adminMsg','No se pudo registrar el pago: '+error.message);return}
+ await logAdmin('weekly_driver_payout_paid','settlement',id,'Pago semanal al conductor');
+ msg('adminMsg','✅ Pago semanal registrado.'); loadAdminWeeklyPayouts(); loadAdminFinance();
 }
 async function loadPendingCashSettlements(){
  const box=document.getElementById('cashSettlements'); if(!box)return;
@@ -526,11 +588,19 @@ async function markCashSettlementPaid(id,driverId,amount){
 }
 async function loadAdminSettings(){
  const box=document.getElementById('adminSettings'); const {data,error}=await sb.from('app_settings').select('*').eq('id',1).maybeSingle(); if(error){box.innerHTML='<p>No pudimos cargar configuración.</p>';return}
- const d=data||{commission_rate:20,minimum_vehicle_year:2009,launch_driver_commission:0};
- const launchEnd=new Date('2026-12-18T00:00:00-03:00'); box.innerHTML=`<div class="card"><b>🎉 Comisión de lanzamiento</b><br>0% para conductores hasta el <b>18/12/2026</b>.<br>Después se aplicará automáticamente <b>15%</b>.</div><label>Comisión posterior al lanzamiento (%)<br><input id="setCommission" type="number" min="0" max="100" value="${d.commission_rate}"></label><br><label>Año mínimo del vehículo<br><input id="setYear" type="number" value="${d.minimum_vehicle_year}"></label><br><label>Comisión de lanzamiento (%)<br><input id="setLaunch" type="number" min="0" max="100" value="0" disabled></label><br><button onclick="saveAdminSettings()">Guardar configuración</button>`;
+ const d=data||{commission_rate:20,minimum_vehicle_year:2009,launch_driver_commission:0,transfer_bank:'',transfer_account_name:'',transfer_account_number:'',transfer_alias:'',transfer_qr_url:''};
+ const launchEnd=new Date('2026-12-18T00:00:00-03:00'); box.innerHTML=`<div class="card"><b>🎉 Comisión de lanzamiento</b><br>0% para conductores hasta el <b>18/12/2026</b>.<br>Después se aplicará automáticamente <b>15%</b>.</div><label>Comisión posterior al lanzamiento (%)<br><input id="setCommission" type="number" min="0" max="100" value="${d.commission_rate}"></label><br><label>Año mínimo del vehículo<br><input id="setYear" type="number" value="${d.minimum_vehicle_year}"></label><br><label>Comisión de lanzamiento (%)<br><input id="setLaunch" type="number" min="0" max="100" value="0" disabled></label>
+<hr><h3>🏦 Cuenta de cobro HOLYN</h3>
+<p class="muted">Estos datos aparecen al pasajero cuando elige transferencia. Guardalos solo cuando la cuenta esté realmente a nombre/titularidad de HOLYN.</p>
+<label>Banco<br><input id="setTransferBank" value="${d.transfer_bank||''}" placeholder="Banco"></label>
+<label>Titular<br><input id="setTransferName" value="${d.transfer_account_name||''}" placeholder="Titular de la cuenta"></label>
+<label>Número de cuenta<br><input id="setTransferNumber" value="${d.transfer_account_number||''}" placeholder="Número de cuenta"></label>
+<label>Alias / identificador<br><input id="setTransferAlias" value="${d.transfer_alias||''}" placeholder="Alias o identificador"></label>
+<label>URL pública del QR (opcional)<br><input id="setTransferQR" value="${d.transfer_qr_url||''}" placeholder="https://..."></label>
+<br><button onclick="saveAdminSettings()">Guardar configuración</button>`;
 }
 async function saveAdminSettings(){
- const payload={commission_rate:Number(document.getElementById('setCommission').value),minimum_vehicle_year:Number(document.getElementById('setYear').value),launch_driver_commission:Number(document.getElementById('setLaunch').value),updated_at:new Date().toISOString()};
+ const payload={commission_rate:Number(document.getElementById('setCommission').value),minimum_vehicle_year:Number(document.getElementById('setYear').value),launch_driver_commission:Number(document.getElementById('setLaunch').value),transfer_bank:document.getElementById('setTransferBank').value.trim(),transfer_account_name:document.getElementById('setTransferName').value.trim(),transfer_account_number:document.getElementById('setTransferNumber').value.trim(),transfer_alias:document.getElementById('setTransferAlias').value.trim(),transfer_qr_url:document.getElementById('setTransferQR').value.trim(),updated_at:new Date().toISOString()};
  const {error}=await sb.from('app_settings').update(payload).eq('id',1); if(error){msg('adminMsg','No se pudo guardar: '+error.message);return}
  await logAdmin('update_settings','app_settings',null,'Configuración actualizada'); msg('adminMsg','✅ Configuración guardada.');
 }
