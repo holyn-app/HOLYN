@@ -337,8 +337,16 @@ function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.g
 function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
  const active=(data||[]).find(t=>['requested','accepted','arrived','in_progress'].includes(t.status));
+ if(active && active.payment_method==='bank_transfer'){
+   const {data:tp}=await sb.from('trip_payments').select('status,amount').eq('trip_id',active.id).maybeSingle();
+   if(tp?.status!=='paid' && active.status==='requested'){
+     showTransferInstructions(active.id,tp?.amount||active.estimated_fare||0);
+   } else if(tp?.status==='paid'){
+     document.getElementById('transferPaymentCard')?.classList.add('hidden');
+   }
+ }
  if(active){
    if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
    if(active.destination_lat&&active.destination_lng&&tripMap&&passengerLocation)drawRoute(passengerLocation,{lat:Number(active.destination_lat),lng:Number(active.destination_lng)});
@@ -465,6 +473,12 @@ function passengerRatingButtons(t){
  return '<div style="margin-top:8px"><b>Califica al pasajero:</b> '+[1,2,3,4,5].map(n=>'<button onclick="ratePassenger(\''+t.id+'\',\''+t.passenger_id+'\','+n+')">'+n+'⭐</button>').join(' ')+'</div>';
 }
 async function acceptTrip(id){
+ const {data:t,error:tError}=await sb.from('trips').select('payment_method,status').eq('id',id).maybeSingle();
+ if(tError||!t){msg('driverMsg','No pudimos comprobar el viaje.');return}
+ if(t.payment_method==='bank_transfer'){
+   const {data:p}=await sb.from('trip_payments').select('status').eq('trip_id',id).maybeSingle();
+   if(p?.status!=='paid'){msg('driverMsg','🏦 Este viaje todavía no tiene la transferencia confirmada por HOLYN.');return}
+ }
  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
  msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
