@@ -312,7 +312,7 @@ function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geo
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
  document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
- const active=(data||[]).find(t=>['requested','accepted','arrived','in_progress'].includes(t.status));
+ const active=(data||[]).find(t=>['requested','accepted','arriving','in_progress'].includes(t.status));
  if(active && active.payment_method==='bank_transfer'){ showTransferInstructions(); }
  if(active){
    if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
@@ -477,16 +477,16 @@ function ratingButtons(t){
 }
 async function updateTripStatus(id,status){
  const payload={status};
- if(status==='arrived')payload.arrived_at=new Date().toISOString();
+ if(status==='arriving')payload.arrived_at=new Date().toISOString();
  if(status==='in_progress')payload.started_at=new Date().toISOString();
  if(status==='completed')payload.completed_at=new Date().toISOString();
  const {error}=await sb.from('trips').update(payload).eq('id',id).eq('driver_id',profile.id);
  if(error){msg('driverMsg','No se pudo actualizar el viaje.');return}
- msg('driverMsg',status==='arrived'?'📍 Marcaste que llegaste.':status==='in_progress'?'🚕 Viaje iniciado.':'🏁 Viaje finalizado.');loadDriver();
+ msg('driverMsg',status==='arriving'?'📍 Marcaste que llegaste.':status==='in_progress'?'🚕 Viaje iniciado.':'🏁 Viaje finalizado.');loadDriver();
 }
 function tripStatusButtons(t){
  if(t.status==='accepted')return '<button onclick="updateTripStatus(\''+t.id+'\',\'arrived\')">📍 Llegué</button>';
- if(t.status==='arrived')return '<button onclick="updateTripStatus(\''+t.id+'\',\'in_progress\')">🚕 Iniciar viaje</button>';
+ if(t.status==='arriving')return '<button onclick="updateTripStatus(\''+t.id+'\',\'in_progress\')">🚕 Iniciar viaje</button>';
  if(t.status==='in_progress')return '<button onclick="updateTripStatus(\''+t.id+'\',\'completed\')">🏁 Finalizar viaje</button>';
  return '';
 }
