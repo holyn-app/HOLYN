@@ -534,7 +534,7 @@ async function loadAdminFinance(){
  const box=document.getElementById('adminFinance');
  const [trips,settlements,settings]=await Promise.all([sb.from('trips').select('holyn_commission,driver_amount,final_fare,estimated_fare,payment_method,status'),sb.from('settlements').select('amount,status,method,created_at'),sb.from('app_settings').select('*').eq('id',1).maybeSingle()]);
  const completed=(trips.data||[]).filter(x=>x.status==='completed'); const revenue=completed.reduce((a,x)=>a+Number(x.holyn_commission||0),0); const fares=completed.reduce((a,x)=>a+Number(x.final_fare??x.estimated_fare??0),0); const pending=(settlements.data||[]).filter(x=>x.status!=='completed').reduce((a,x)=>a+Number(x.amount||0),0);
- box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión posterior al lanzamiento: <b>${settings.data?.commission_rate??15}%</b> · Lanzamiento: <b>0%</b></p><h3>💵 Comisiones de efectivo pendientes</h3><div id="cashSettlements">Cargando...</div>`; loadPendingCashSettlements(); loadAdminTransferPayments(); loadAdminWeeklyPayouts();
+ box.innerHTML=`<div class="grid"><div class="card"><h2>Gs. ${revenue.toLocaleString()}</h2><span class="muted">Comisión HOLYN</span></div><div class="card"><h2>Gs. ${fares.toLocaleString()}</h2><span class="muted">Facturación registrada</span></div><div class="card"><h2>Gs. ${pending.toLocaleString()}</h2><span class="muted">Liquidaciones pendientes</span></div></div><p>Comisión posterior al lanzamiento: <b>${settings.data?.commission_rate??15}%</b> · Lanzamiento: <b>0%</b></p><h3>💰 Comisiones de conductores pendientes</h3><div id="driverCommissionSettlements">Cargando...</div><h3>💵 Comisiones de efectivo pendientes</h3><div id="cashSettlements">Cargando...</div>`; loadPendingDriverCommissionSettlements(); loadPendingCashSettlements();
 }
 async function loadAdminTransferPayments(){
  const box=document.getElementById('adminTransferPayments'); if(!box)return;
@@ -563,6 +563,23 @@ async function markWeeklyPayoutPaid(id,driverId,amount){
  await logAdmin('weekly_driver_payout_paid','settlement',id,'Pago semanal al conductor');
  msg('adminMsg','✅ Pago semanal registrado.'); loadAdminWeeklyPayouts(); loadAdminFinance();
 }
+async function loadPendingDriverCommissionSettlements(){
+ const box=document.getElementById('driverCommissionSettlements'); if(!box)return;
+ const {data,error}=await sb.from('settlements').select('driver_id,amount,due_at').eq('method','driver_commission').eq('status','pending').order('due_at',{ascending:true}).limit(500);
+ if(error){box.innerHTML='<p>No pudimos cargar comisiones.</p>';return}
+ const grouped={};
+ (data||[]).forEach(s=>{const g=grouped[s.driver_id]||(grouped[s.driver_id]={amount:0,overdue:0,next:s.due_at});g.amount+=Number(s.amount||0);if(s.due_at&&new Date(s.due_at)<=new Date())g.overdue+=Number(s.amount||0);if(!g.next||new Date(s.due_at)<new Date(g.next))g.next=s.due_at;});
+ box.innerHTML=Object.entries(grouped).map(([id,g])=>'<div class="card"><b>Conductor:</b> '+id+'<br><b>Pendiente:</b> Gs. '+g.amount.toLocaleString()+(g.overdue>0?' · <span style="color:#ff8f8f"><b>VENCIDO: Gs. '+g.overdue.toLocaleString()+'</b></span>':'')+'<br><small>Próximo vencimiento: '+(g.next?new Date(g.next).toLocaleString():'—')+'</small><br><button onclick="confirmDriverCommissionPayment(\''+id+'\','+g.amount+')">✅ Confirmar pago recibido</button></div>').join('')||'<span class="muted">No hay comisiones pendientes.</span>';
+}
+async function confirmDriverCommissionPayment(driverId,amount){
+ const n=Number(prompt('Monto recibido del conductor (Gs.):',String(amount)));
+ if(!Number.isFinite(n)||n<=0){msg('adminMsg','Monto inválido.');return}
+ const note=prompt('Nota opcional:')||null;
+ const {data,error}=await sb.rpc('confirm_driver_commission_payment',{p_driver_id:driverId,p_amount:n,p_note:note});
+ if(error){msg('adminMsg','No se pudo registrar el pago: '+error.message);return}
+ await logAdmin('driver_commission_paid','driver',driverId,'Pago confirmado: Gs. '+Number(data||n).toLocaleString());
+ msg('adminMsg','✅ Pago de comisión confirmado.'); loadAdminFinance();
+}
 async function loadPendingCashSettlements(){
  const box=document.getElementById('cashSettlements'); if(!box)return;
  const {data,error}=await sb.from('settlements').select('id,driver_id,trip_id,amount,status,method,created_at').eq('method','cash_commission').neq('status','completed').order('created_at',{ascending:false}).limit(100);
@@ -581,7 +598,7 @@ async function markCashSettlementPaid(id,driverId,amount){
 }
 async function loadAdminSettings(){
  const box=document.getElementById('adminSettings'); const {data,error}=await sb.from('app_settings').select('*').eq('id',1).maybeSingle(); if(error){box.innerHTML='<p>No pudimos cargar configuración.</p>';return}
- const d=data||{commission_rate:20,minimum_vehicle_year:2009,launch_driver_commission:0,transfer_bank:'',transfer_account_name:'',transfer_account_number:'',transfer_alias:'',transfer_qr_url:''};
+ const d=data||{commission_rate:20,minimum_vehicle_year:2009,launch_driver_commission:0,transfer_bank:'',transfer_account_name:'',transfer_account_number:'',transfer_alias:'',transfer_qr_url:'',commission_payment_bank:'',commission_payment_account_name:'',commission_payment_account_number:'',commission_payment_alias:'',commission_payment_qr_url:''};
  const launchEnd=new Date('2026-12-18T00:00:00-03:00'); box.innerHTML=`<div class="card"><b>🎉 Comisión de lanzamiento</b><br>0% para conductores hasta el <b>18/12/2026</b>.<br>Después se aplicará automáticamente <b>15%</b>.</div><label>Comisión posterior al lanzamiento (%)<br><input id="setCommission" type="number" min="0" max="100" value="${d.commission_rate}"></label><br><label>Año mínimo del vehículo<br><input id="setYear" type="number" value="${d.minimum_vehicle_year}"></label><br><label>Comisión de lanzamiento (%)<br><input id="setLaunch" type="number" min="0" max="100" value="0" disabled></label>
 <hr><h3>🏦 Cuenta de cobro HOLYN</h3>
 <p class="muted">Estos datos aparecen al pasajero cuando elige transferencia. Guardalos solo cuando la cuenta esté realmente a nombre/titularidad de HOLYN.</p>
@@ -590,10 +607,16 @@ async function loadAdminSettings(){
 <label>Número de cuenta<br><input id="setTransferNumber" value="${d.transfer_account_number||''}" placeholder="Número de cuenta"></label>
 <label>Alias / identificador<br><input id="setTransferAlias" value="${d.transfer_alias||''}" placeholder="Alias o identificador"></label>
 <label>URL pública del QR (opcional)<br><input id="setTransferQR" value="${d.transfer_qr_url||''}" placeholder="https://..."></label>
+<hr><h3>💳 Cobro de comisiones a conductores</h3>
+<label>Banco<br><input id="setCommissionBank" value="${d.commission_payment_bank||''}" placeholder="Banco"></label>
+<label>Titular<br><input id="setCommissionName" value="${d.commission_payment_account_name||''}" placeholder="Titular"></label>
+<label>Número de cuenta<br><input id="setCommissionNumber" value="${d.commission_payment_account_number||''}" placeholder="Número de cuenta"></label>
+<label>Alias / identificador<br><input id="setCommissionAlias" value="${d.commission_payment_alias||''}" placeholder="Alias"></label>
+<label>URL pública del QR<br><input id="setCommissionQR" value="${d.commission_payment_qr_url||''}" placeholder="https://..."></label>
 <br><button onclick="saveAdminSettings()">Guardar configuración</button>`;
 }
 async function saveAdminSettings(){
- const payload={commission_rate:Number(document.getElementById('setCommission').value),minimum_vehicle_year:Number(document.getElementById('setYear').value),launch_driver_commission:Number(document.getElementById('setLaunch').value),transfer_bank:document.getElementById('setTransferBank').value.trim(),transfer_account_name:document.getElementById('setTransferName').value.trim(),transfer_account_number:document.getElementById('setTransferNumber').value.trim(),transfer_alias:document.getElementById('setTransferAlias').value.trim(),transfer_qr_url:document.getElementById('setTransferQR').value.trim(),updated_at:new Date().toISOString()};
+ const payload={commission_rate:Number(document.getElementById('setCommission').value),minimum_vehicle_year:Number(document.getElementById('setYear').value),launch_driver_commission:Number(document.getElementById('setLaunch').value),transfer_bank:document.getElementById('setTransferBank').value.trim(),transfer_account_name:document.getElementById('setTransferName').value.trim(),transfer_account_number:document.getElementById('setTransferNumber').value.trim(),transfer_alias:document.getElementById('setTransferAlias').value.trim(),transfer_qr_url:document.getElementById('setTransferQR').value.trim(),commission_payment_bank:document.getElementById('setCommissionBank').value.trim(),commission_payment_account_name:document.getElementById('setCommissionName').value.trim(),commission_payment_account_number:document.getElementById('setCommissionNumber').value.trim(),commission_payment_alias:document.getElementById('setCommissionAlias').value.trim(),commission_payment_qr_url:document.getElementById('setCommissionQR').value.trim(),updated_at:new Date().toISOString()};
  const {error}=await sb.from('app_settings').update(payload).eq('id',1); if(error){msg('adminMsg','No se pudo guardar: '+error.message);return}
  await logAdmin('update_settings','app_settings',null,'Configuración actualizada'); msg('adminMsg','✅ Configuración guardada.');
 }
