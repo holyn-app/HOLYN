@@ -294,29 +294,14 @@ async function requestTrip(){
  msg('passengerMsg',payment==='bank_transfer'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
  loadPassenger();
 }
-async function showTransferInstructions(tripId,amount){
- const {data:settings}=await sb.from('app_settings').select('transfer_bank,transfer_account_name,transfer_account_number,transfer_alias,transfer_qr_url').eq('id',1).maybeSingle();
+async function showTransferInstructions(){
  const card=document.getElementById('transferPaymentCard'), box=document.getElementById('transferPaymentInfo');
  if(!card||!box)return;
- const s=settings||{};
- box.innerHTML=`
- <p><b>Importe a transferir: Gs. ${Number(amount).toLocaleString()}</b></p>
- <p><b>Banco:</b> ${s.transfer_bank||'Pendiente de configurar por HOLYN'}</p>
- <p><b>Titular:</b> ${s.transfer_account_name||'Pendiente de configurar'}</p>
- <p><b>Cuenta:</b> ${s.transfer_account_number||'Pendiente de configurar'}</p>
- <p><b>Alias:</b> ${s.transfer_alias||'Pendiente de configurar'}</p>
- ${s.transfer_qr_url?`<p><img src="${s.transfer_qr_url}" alt="QR HOLYN" style="max-width:220px;border-radius:12px;background:#fff;padding:8px"></p>`:''}
- <p class="muted">Después de transferir, pulsa el botón. HOLYN verificará el pago antes de confirmarlo.</p>
- <button onclick="markTransferSent('${tripId}',${Number(amount)})">✅ Ya transferí</button>
- `;
+ box.innerHTML='<p><b>🏦 Transferencia / QR al conductor</b></p><p class="muted">El pago del viaje se realiza directamente al conductor al finalizar el viaje. HOLYN no muestra ni guarda sus datos bancarios.</p>';
  card.classList.remove('hidden');
- card.scrollIntoView({behavior:'smooth',block:'start'});
 }
-async function markTransferSent(tripId,amount){
- const {error}=await sb.from('trip_payments').update({status:'awaiting_confirmation'}).eq('trip_id',tripId).eq('payment_method','bank_transfer');
- if(error){msg('passengerMsg','No pudimos registrar el aviso de transferencia.');return}
- msg('passengerMsg','🟡 Aviso enviado. HOLYN verificará la transferencia.');
- loadPassenger();
+async function markTransferSent(){
+ msg('passengerMsg','ℹ️ La transferencia se realiza directamente al conductor al finalizar el viaje.');
 }
 function getCurrentPosition(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,maximumAge:10000,timeout:15000})})}
 async function geocodeDestination(q){try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=py&q='+encodeURIComponent(q));const d=await r.json();return d&&d.length?{lat:Number(d[0].lat),lng:Number(d[0].lon)}:null}catch(e){return null}}
