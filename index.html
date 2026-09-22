@@ -62,7 +62,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <label>Método de pago</label><select id="payment" onchange="toggleTransferBox()"><option value="bank_transfer">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
 <div id="transferBox" class="msg">
 <b>🏦 Pago por transferencia</b>
-<p class="muted">Después de solicitar el viaje te mostraremos los datos de la cuenta de HOLYN. Transferí el importe exacto y luego pulsa “Ya transferí”.</p>
+<p class="muted">El pago se realiza directamente al conductor al finalizar el viaje. HOLYN no recibe el dinero del viaje.</p>
 </div>
 <label>Precio estimado (Gs.)</label><input id="fare" type="number" value="30000">
 <button onclick="requestTrip()">Solicitar</button>
@@ -105,6 +105,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div id="documentsMsg" class="msg hidden"></div>
 </div><section id="driver" class="hidden">
 <div class="card"><h2>🚗 Panel del conductor</h2>
+<div id="driverCommissionBox" class="msg">Cargando comisión...</div>
 <div id="driverStatus" class="msg">Estado: pendiente de revisión.</div><button id="onlineBtn" onclick="toggleOnline()">Ponerme EN LÍNEA</button>
 <div id="driverMsg" class="msg hidden"></div>
 </div>
@@ -290,18 +291,7 @@ async function requestTrip(){
    driver_amount:driverAmount,payment_method:payment,status:'requested'
  }).select('id').single();
  if(error||!trip){msg('passengerMsg','No se pudo solicitar el viaje. Inténtalo nuevamente.');return}
- msg('passengerMsg',payment==='bank_transfer'?'🏦 Viaje creado. Realizá la transferencia para confirmar el pago.':'🚕 Solicitud enviada. Buscando conductor...');
- if(payment==='bank_transfer'){
-   const {error:payError}=await sb.from('trip_payments').insert({
-     trip_id:trip.id,provider:'manual_transfer',amount:fare,status:'pending',payment_method:'bank_transfer'
-   });
-   if(payError){
-     msg('passengerMsg','No pudimos preparar el pago por transferencia. El viaje quedó registrado; contactá a soporte.');
-     loadPassenger(); return;
-   }
-   await showTransferInstructions(trip.id,fare);
-   return;
- }
+ msg('passengerMsg',payment==='bank_transfer'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
  loadPassenger();
 }
 async function showTransferInstructions(tripId,amount){
@@ -339,14 +329,7 @@ async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
  document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
  const active=(data||[]).find(t=>['requested','accepted','arrived','in_progress'].includes(t.status));
- if(active && active.payment_method==='bank_transfer'){
-   const {data:tp}=await sb.from('trip_payments').select('status,amount').eq('trip_id',active.id).maybeSingle();
-   if(tp?.status!=='paid' && active.status==='requested'){
-     showTransferInstructions(active.id,tp?.amount||active.estimated_fare||0);
-   } else if(tp?.status==='paid'){
-     document.getElementById('transferPaymentCard')?.classList.add('hidden');
-   }
- }
+ if(active && active.payment_method==='bank_transfer'){ showTransferInstructions(); }
  if(active){
    if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
    if(active.destination_lat&&active.destination_lng&&tripMap&&passengerLocation)drawRoute(passengerLocation,{lat:Number(active.destination_lat),lng:Number(active.destination_lng)});
@@ -361,6 +344,9 @@ async function loadPassenger(){
  tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{const t=payload.new;msg('passengerMsg',t.status==='accepted'?'🚗 ¡Conductor encontrado! Tu viaje fue aceptado.':t.status==='completed'?'✅ Viaje finalizado.':t.status==='cancelled'?'⚠️ Viaje cancelado.':'🔄 Tu viaje se actualizó.');loadPassenger()}).subscribe();
 }
 async function toggleOnline(){
+ const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
+ if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
+ if(Number(overdueCall.data||0)>0){msg('driverMsg','🔒 Cuenta suspendida por comisión HOLYN vencida. Paga la deuda para reactivarla.');loadDriver();return}
  const {data:dp}=await sb.from('driver_profiles').select('is_approved,is_online,account_status').eq('user_id',profile.id).maybeSingle();
  if(!dp?.is_approved){
    msg('driverMsg','🔒 Tu cuenta todavía no está aprobada por HOLYN. No puedes ponerte en línea.');
@@ -398,6 +384,9 @@ async function loadDriver(){
    msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');loadDriver();
  }).subscribe();
  const approved=dp?.is_approved===true;
+ const {data:cs}=await sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id});
+ const cr=cs?.[0]||{}; const total=Number(cr.total_pending||0); const overdue=Number(cr.overdue||0);
+ document.getElementById('driverCommissionBox').innerHTML='<h3>💰 Comisión HOLYN</h3><p><b>Pendiente: Gs. '+total.toLocaleString()+'</b></p>'+(overdue>0?'<p style="color:#ff8f8f"><b>⚠️ Vencido: Gs. '+overdue.toLocaleString()+'</b></p>':'')+(total>0?'<button onclick="showCommissionPayment()">💳 Pagar comisión HOLYN</button>':'<p class="muted">No tienes comisión pendiente.</p>');
  document.getElementById('driverRegistration').classList.toggle('hidden',!!dp);
  document.getElementById('driverDocuments').classList.toggle('hidden',!dp || approved); 
  document.getElementById('onlineBtn').disabled=!approved;
@@ -406,7 +395,7 @@ async function loadDriver(){
  const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(20);
  document.getElementById('requests').innerHTML=!approved?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes.</p>':(req||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> · ${t.destination_text}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${t.id}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo')+' · <b>'+t.status+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
+ document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+t.destination_text+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+t.status+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
@@ -463,6 +452,12 @@ async function uploadDriverDocuments(){
  }
 }
 
+async function showCommissionPayment(){
+ const {data:s}=await sb.from('app_settings').select('commission_payment_bank,commission_payment_account_name,commission_payment_account_number,commission_payment_alias,commission_payment_qr_url').eq('id',1).maybeSingle();
+ const {data:cs}=await sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id}); const cr=cs?.[0]||{};
+ const d=s||{};
+ document.getElementById('driverCommissionBox').innerHTML='<h3>💳 Pagar comisión HOLYN</h3><p><b>Total pendiente: Gs. '+Number(cr.total_pending||0).toLocaleString()+'</b></p><p><b>Banco:</b> '+(d.commission_payment_bank||'Pendiente de configurar')+'</p><p><b>Titular:</b> '+(d.commission_payment_account_name||'Pendiente de configurar')+'</p><p><b>Cuenta:</b> '+(d.commission_payment_account_number||'Pendiente de configurar')+'</p><p><b>Alias:</b> '+(d.commission_payment_alias||'Pendiente de configurar')+'</p>'+(d.commission_payment_qr_url?'<p><img src="'+d.commission_payment_qr_url+'" style="max-width:220px;background:#fff;padding:8px;border-radius:12px"></p>':'')+'<p class="muted">Después de pagar, avisa a HOLYN. La cuenta se reactiva cuando confirmemos el pago.</p><button onclick="loadDriver()">Volver</button>';
+}
 async function ratePassenger(tripId,passengerId,rating){
  const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:passengerId,rating:rating},{onConflict:'trip_id,rater_id'});
  if(error){msg('driverMsg','No se pudo guardar la calificación.');return}
@@ -473,13 +468,12 @@ function passengerRatingButtons(t){
  return '<div style="margin-top:8px"><b>Califica al pasajero:</b> '+[1,2,3,4,5].map(n=>'<button onclick="ratePassenger(\''+t.id+'\',\''+t.passenger_id+'\','+n+')">'+n+'⭐</button>').join(' ')+'</div>';
 }
 async function acceptTrip(id){
+ const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
+ if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
+ if(Number(overdueCall.data||0)>0){msg('driverMsg','🔒 No puedes aceptar viajes porque tienes una comisión vencida.');loadDriver();return}
  const {data:t,error:tError}=await sb.from('trips').select('payment_method,status').eq('id',id).maybeSingle();
  if(tError||!t){msg('driverMsg','No pudimos comprobar el viaje.');return}
- if(t.payment_method==='bank_transfer'){
-   const {data:p}=await sb.from('trip_payments').select('status').eq('trip_id',id).maybeSingle();
-   if(p?.status!=='paid'){msg('driverMsg','🏦 Este viaje todavía no tiene la transferencia confirmada por HOLYN.');return}
- }
- const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
+  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
  msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
 }
