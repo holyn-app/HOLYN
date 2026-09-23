@@ -137,7 +137,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let profile=null, vehicle="HOLYN";
 let tripChannel=null, passengerLocationWatch=null, passengerLocation=null, passengerLocationChannel=null, tripMap=null, passengerMarker=null, driverMarker=null, routeLine=null;
 
-function msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
+function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[ch]))}\nfunction msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
 function chooseVehicle(v,el){vehicle=v;document.querySelectorAll('.vehicle').forEach(x=>x.classList.remove('active'));el.classList.add('active')}
 async function signup(){
  const email=emailEl().value.trim();
@@ -275,8 +275,8 @@ async function requestTrip(){
  const dest=await geocodeDestination(destination);
  if(!dest){msg('passengerMsg','No pudimos encontrar ese destino. Prueba con una dirección o lugar más específico.');return}
  passengerLocation=origin;
- const {data:settings}=await sb.from('app_settings').select('*').limit(1);
- const cfg=(settings||[])[0]||{};
+ const {data:settings}=await sb.from('app_settings').select('*').eq('id',1).maybeSingle();
+ const cfg=settings||{};
  const launchStart=new Date('2026-09-18T00:00:00-03:00');
  const futureDate=new Date(launchStart); futureDate.setMonth(futureDate.getMonth()+3);
  const now=new Date();
@@ -442,7 +442,7 @@ async function showCommissionPayment(){
  const {data:s}=await sb.from('app_settings').select('commission_payment_bank,commission_payment_account_name,commission_payment_account_number,commission_payment_alias,commission_payment_qr_url').eq('id',1).maybeSingle();
  const {data:cs}=await sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id}); const cr=cs?.[0]||{};
  const d=s||{};
- document.getElementById('driverCommissionBox').innerHTML='<h3>💳 Pagar comisión HOLYN</h3><p><b>Total pendiente: Gs. '+Number(cr.total_pending||0).toLocaleString()+'</b></p><p><b>Banco:</b> '+(d.commission_payment_bank||'Pendiente de configurar')+'</p><p><b>Titular:</b> '+(d.commission_payment_account_name||'Pendiente de configurar')+'</p><p><b>Cuenta:</b> '+(d.commission_payment_account_number||'Pendiente de configurar')+'</p><p><b>Alias:</b> '+(d.commission_payment_alias||'Pendiente de configurar')+'</p>'+(d.commission_payment_qr_url?'<p><img src="'+d.commission_payment_qr_url+'" style="max-width:220px;background:#fff;padding:8px;border-radius:12px"></p>':'')+'<p class="muted">Después de pagar, avisa a HOLYN. La cuenta se reactiva cuando confirmemos el pago.</p><button onclick="loadDriver()">Volver</button>';
+ document.getElementById('driverCommissionBox').innerHTML='<h3>🏦 Pagar comisión HOLYN</h3><p><b>Total pendiente: Gs. '+Number(cr.total_pending||0).toLocaleString()+'</b></p><p><b>Banco:</b> '+(d.commission_payment_bank||'Pendiente de configurar')+'</p><p><b>Titular:</b> '+(d.commission_payment_account_name||'Pendiente de configurar')+'</p><p><b>Cuenta:</b> '+(d.commission_payment_account_number||'Pendiente de configurar')+'</p><p><b>Alias:</b> '+(d.commission_payment_alias||'Pendiente de configurar')+'</p>'+(d.commission_payment_qr_url?'<p><img src="'+d.commission_payment_qr_url+'" style="max-width:220px;background:#fff;padding:8px;border-radius:12px"></p>':'')+'<p class="muted">Después de pagar, avisa a HOLYN. La cuenta se reactiva cuando confirmemos el pago.</p><button onclick="loadDriver()">Volver</button>';
 }
 async function ratePassenger(tripId,passengerId,rating){
  const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:passengerId,rating:rating},{onConflict:'trip_id,rater_id'});
@@ -575,7 +575,7 @@ async function loadAdminSettings(){
 <label>Número de cuenta<br><input id="setTransferNumber" value="${d.transfer_account_number||''}" placeholder="Número de cuenta"></label>
 <label>Alias / identificador<br><input id="setTransferAlias" value="${d.transfer_alias||''}" placeholder="Alias o identificador"></label>
 <label>URL pública del QR (opcional)<br><input id="setTransferQR" value="${d.transfer_qr_url||''}" placeholder="https://..."></label>
-<hr><h3>💳 Cobro de comisiones a conductores</h3>
+<hr><h3>🏦 Cobro de comisiones a conductores</h3>
 <label>Banco<br><input id="setCommissionBank" value="${d.commission_payment_bank||''}" placeholder="Banco"></label>
 <label>Titular<br><input id="setCommissionName" value="${d.commission_payment_account_name||''}" placeholder="Titular"></label>
 <label>Número de cuenta<br><input id="setCommissionNumber" value="${d.commission_payment_account_number||''}" placeholder="Número de cuenta"></label>
