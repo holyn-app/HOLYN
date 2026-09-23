@@ -524,7 +524,7 @@ async function togglePassengerAccount(id,active){
 async function loadAdminTrips(){
  const box=document.getElementById('adminTrips'); const {data,error}=await sb.from('trips').select('id,passenger_id,driver_id,destination_text,vehicle_type,estimated_fare,final_fare,holyn_commission,driver_amount,payment_method,status,requested_at').order('requested_at',{ascending:false}).limit(100);
  if(error){box.innerHTML='<p>No pudimos cargar viajes.</p>';return}
- box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='card'?'💳 Tarjeta':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
+ box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
 }
 async function loadAdminSupport(){
  const box=document.getElementById('adminSupport'); const {data,error}=await sb.from('support_tickets').select('*').order('created_at',{ascending:false}).limit(100);
