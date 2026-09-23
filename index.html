@@ -513,7 +513,7 @@ async function logAdmin(action,targetType,targetId,reason){
 async function loadAdminPassengers(){
  const box=document.getElementById('adminPassengers'); const {data,error}=await sb.from('profiles').select('id,full_name,phone,role,rating,is_active,created_at').eq('role','passenger').order('created_at',{ascending:false}).limit(100);
  if(error){box.innerHTML='<p>No pudimos cargar pasajeros.</p>';return}
- box.innerHTML=(data||[]).map(p=>`<div class="card"><b>${p.full_name||'Sin nombre'}</b><br>${p.phone||'Sin teléfono'} · ⭐ ${p.rating??'—'} · ${p.is_active?'🟢 Activo':'🔴 Cerrado'}<br><small>${new Date(p.created_at).toLocaleString()}</small><br><button onclick="togglePassengerAccount('${p.id}',${p.is_active?'false':'true'})">${p.is_active?'🔒 Cerrar cuenta':'🟢 Reactivar cuenta'}</button></div>`).join('')||'<span class="muted">No hay pasajeros.</span>';
+ box.innerHTML=(data||[]).map(p=>`<div class="card"><b>${escapeHtml(p.full_name||'Sin nombre')}</b><br>${escapeHtml(p.phone||'Sin teléfono')} · ⭐ ${escapeHtml(p.rating??'—')} · ${p.is_active?'🟢 Activo':'🔴 Cerrado'}<br><small>${new Date(p.created_at).toLocaleString()}</small><br><button onclick="togglePassengerAccount('${p.id}',${p.is_active?'false':'true'})">${p.is_active?'🔒 Cerrar cuenta':'🟢 Reactivar cuenta'}</button></div>`).join('')||'<span class="muted">No hay pasajeros.</span>';
 }
 async function togglePassengerAccount(id,active){
  const reason=prompt(active?'Motivo para reactivar:':'Motivo para cerrar la cuenta:'); if(!reason)return;
@@ -524,12 +524,12 @@ async function togglePassengerAccount(id,active){
 async function loadAdminTrips(){
  const box=document.getElementById('adminTrips'); const {data,error}=await sb.from('trips').select('id,passenger_id,driver_id,destination_text,vehicle_type,estimated_fare,final_fare,holyn_commission,driver_amount,payment_method,status,requested_at').order('requested_at',{ascending:false}).limit(100);
  if(error){box.innerHTML='<p>No pudimos cargar viajes.</p>';return}
- box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.vehicle_type}</b> → ${t.destination_text}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
+ box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${escapeHtml(t.vehicle_type)}</b> → ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
 }
 async function loadAdminSupport(){
  const box=document.getElementById('adminSupport'); const {data,error}=await sb.from('support_tickets').select('*').order('created_at',{ascending:false}).limit(100);
  if(error){box.innerHTML='<p>No pudimos cargar soporte.</p>';return}
- box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${t.subject}</b> · <b>${t.status}</b> · prioridad ${t.priority}<p>${t.message}</p>${t.admin_response?'<p><b>Respuesta:</b> '+t.admin_response+'</p>':''}<button onclick="updateSupport('${t.id}','in_process')">En proceso</button> <button onclick="respondSupport('${t.id}')">Responder</button> <button onclick="updateSupport('${t.id}','resolved')">Resolver</button></div>`).join('')||'<span class="muted">No hay tickets.</span>';
+ box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${escapeHtml(t.subject)}</b> · <b>${escapeHtml(t.status)}</b> · prioridad ${escapeHtml(t.priority)}<p>${escapeHtml(t.message)}</p>${t.admin_response?'<p><b>Respuesta:</b> '+escapeHtml(t.admin_response)+'</p>':''}<button onclick="updateSupport('${t.id}','in_process')">En proceso</button> <button onclick="respondSupport('${t.id}')">Responder</button> <button onclick="updateSupport('${t.id}','resolved')">Resolver</button></div>`).join('')||'<span class="muted">No hay tickets.</span>';
 }
 async function updateSupport(id,status){
  const payload={status}; if(status==='resolved')payload.resolved_at=new Date().toISOString();
@@ -590,7 +590,7 @@ async function saveAdminSettings(){
 }
 async function loadAdminActivity(){
  const box=document.getElementById('adminActivity'); const {data,error}=await sb.from('admin_activity').select('*').order('created_at',{ascending:false}).limit(100); if(error){box.innerHTML='<p>No pudimos cargar actividad.</p>';return}
- box.innerHTML=(data||[]).map(a=>`<div class="card"><b>${a.action}</b> · ${a.target_type||''}<br>${a.reason||'Sin motivo registrado'}<br><small>${new Date(a.created_at).toLocaleString()}</small></div>`).join('')||'<span class="muted">Todavía no hay actividad.</span>';
+ box.innerHTML=(data||[]).map(a=>`<div class="card"><b>${escapeHtml(a.action)}</b> · ${escapeHtml(a.target_type||'')}<br>${escapeHtml(a.reason||'Sin motivo registrado')}<br><small>${new Date(a.created_at).toLocaleString()}</small></div>`).join('')||'<span class="muted">Todavía no hay actividad.</span>';
 }
 async function toggleDriverAccount(driverId,action){
  const reason=prompt(action==='suspend'?'Motivo de suspensión:':'Motivo para reactivar:'); if(!reason)return;
@@ -617,10 +617,10 @@ async function loadAdminDrivers(){
    const status=d.is_approved?'approved':(d.verification_status||'pending');
    const label=status==='approved'?'✅ APROBADO':status==='rejected'?'❌ RECHAZADO':status==='needs_more_docs'?'📄 FALTAN DOCUMENTOS':'🟡 PENDIENTE';
    return `<div class="card" style="margin-top:12px">
-   <h3>${label} — ${d.full_name||'Conductor'}</h3>
-   <p><b>Teléfono:</b> ${d.phone||'—'} · <b>Cédula:</b> ${d.document_id||'—'}</p>
-   <p><b>Licencia:</b> ${d.license_number||'—'} · <b>Vencimiento:</b> ${d.license_expiry||'—'}</p>
-   <p><b>Vehículo:</b> ${d.vehicle_model||'—'} · <b>Año:</b> ${d.vehicle_year||'—'} · <b>Chapa:</b> ${d.plate||'—'} · <b>Servicio:</b> ${d.vehicle_type||'—'}</p>
+   <h3>${label} — ${escapeHtml(d.full_name||'Conductor')}</h3>
+   <p><b>Teléfono:</b> ${escapeHtml(d.phone||'—')} · <b>Cédula:</b> ${escapeHtml(d.document_id||'—')}</p>
+   <p><b>Licencia:</b> ${escapeHtml(d.license_number||'—')} · <b>Vencimiento:</b> ${escapeHtml(d.license_expiry||'—')}</p>
+   <p><b>Vehículo:</b> ${escapeHtml(d.vehicle_model||'—')} · <b>Año:</b> ${escapeHtml(d.vehicle_year||'—')} · <b>Chapa:</b> ${escapeHtml(d.plate||'—')} · <b>Servicio:</b> ${escapeHtml(d.vehicle_type||'—')}</p>
    <div id="docs-${d.user_id}"><span class="muted">Cargando documentos...</span></div>
    <div style="margin-top:10px">
     <button onclick="reviewDriver('${d.user_id}','approved')">✅ Aprobar</button>
