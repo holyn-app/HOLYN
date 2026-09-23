@@ -486,7 +486,7 @@ async function updateTripStatus(id,status){
  msg('driverMsg',status==='arriving'?'📍 Marcaste que llegaste.':status==='in_progress'?'🚕 Viaje iniciado.':'🏁 Viaje finalizado.');loadDriver();
 }
 function tripStatusButtons(t){
- if(t.status==='accepted')return '<button onclick="updateTripStatus(\''+t.id+'\',\'arrived\')">📍 Llegué</button>';
+ if(t.status==='accepted')return '<button onclick="updateTripStatus(\''+t.id+'\',\'arriving\')">📍 Llegué</button>';
  if(t.status==='arriving')return '<button onclick="updateTripStatus(\''+t.id+'\',\'in_progress\')">🚕 Iniciar viaje</button>';
  if(t.status==='in_progress')return '<button onclick="updateTripStatus(\''+t.id+'\',\'completed\')">🏁 Finalizar viaje</button>';
  return '';
