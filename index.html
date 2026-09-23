@@ -312,7 +312,7 @@ function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.g
 function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+t.vehicle_type+'</b> → '+t.destination_text+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+t.status+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+t.cancellation_reason:'')+cancelTripButton(t)+ratingButtons(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
  const active=(data||[]).find(t=>['requested','accepted','arriving','in_progress'].includes(t.status));
  if(active && active.payment_method==='bank_transfer'){ showTransferInstructions(); }
  if(active){
@@ -457,9 +457,10 @@ async function acceptTrip(id){
  const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
  if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
  if(Number(overdueCall.data||0)>0){msg('driverMsg','🔒 No puedes aceptar viajes porque tienes una comisión vencida.');loadDriver();return}
- const {data:t,error:tError}=await sb.from('trips').select('payment_method,status').eq('id',id).maybeSingle();
+ const {data:t,error:tError}=await sb.from('trips').select('payment_method,status,driver_id').eq('id',id).maybeSingle();
  if(tError||!t){msg('driverMsg','No pudimos comprobar el viaje.');return}
-  const {error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).is('driver_id',null);
+  const {data:accepted,error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).eq('status','requested').is('driver_id',null).select('id').maybeSingle();
+ if(error||!accepted){msg('driverMsg','Ese viaje ya fue tomado por otro conductor o ya no está disponible.');loadDriver();return}
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
  msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
 }
@@ -470,7 +471,16 @@ async function rateTrip(tripId,driverId,rating){
 }
 function cancelTripButton(t){
  if(!['requested','accepted'].includes(t.status))return '';
- return '<br><button onclick="cancelTrip(\"' + t.id + '\")">❌ Cancelar viaje</button>';
+ return '<br><button onclick="cancelTrip(\\''+t.id+'\\')">❌ Cancelar viaje</button>';
+}
+async function cancelTrip(id){
+ const {data:t,error:readError}=await sb.from('trips').select('status').eq('id',id).eq('passenger_id',profile.id).maybeSingle();
+ if(readError||!t){msg('passengerMsg','No pudimos encontrar ese viaje.');return}
+ if(!['requested','accepted'].includes(t.status)){msg('passengerMsg','Ese viaje ya no se puede cancelar.');return}
+ const reason=prompt('Motivo de cancelación (opcional):')||'Cancelado por el pasajero';
+ const {error}=await sb.from('trips').update({status:'cancelled',cancellation_reason:reason,cancelled_at:new Date().toISOString()}).eq('id',id).eq('passenger_id',profile.id).in('status',['requested','accepted']);
+ if(error){msg('passengerMsg','No se pudo cancelar el viaje.');return}
+ msg('passengerMsg','⚠️ Viaje cancelado.');loadPassenger();
 }
 function ratingButtons(t){
  if(t.status!=='completed'||!t.driver_id)return '';
