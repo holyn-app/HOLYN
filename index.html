@@ -487,6 +487,9 @@ function ratingButtons(t){
  return '<div style="margin-top:8px"><b>Califica tu viaje:</b> '+[1,2,3,4,5].map(n=>'<button onclick="rateTrip(\''+t.id+'\',\''+t.driver_id+'\','+n+')">'+n+'⭐</button>').join(' ')+'</div>';
 }
 async function updateTripStatus(id,status){
+ const allowed={accepted:'arriving',arriving:'in_progress',in_progress:'completed'};
+ const {data:current,error:readError}=await sb.from('trips').select('status').eq('id',id).eq('driver_id',profile.id).maybeSingle();
+ if(readError||!current||allowed[current.status]!==status){msg('driverMsg','Ese viaje no puede pasar a ese estado.');return}
  const payload={status};
  if(status==='arriving')payload.arrived_at=new Date().toISOString();
  if(status==='in_progress')payload.started_at=new Date().toISOString();
