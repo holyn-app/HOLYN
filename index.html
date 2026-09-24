@@ -138,7 +138,8 @@ let profile=null, vehicle="HOLYN";
 let tripChannel=null, passengerLocationWatch=null, passengerLocation=null, passengerLocationChannel=null, tripMap=null, passengerMarker=null, driverMarker=null, routeLine=null;
 
 function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[ch]))}
-function safeHttpUrl(v){try{const u=new URL(String(v||''),location.origin);return ['http:','https:'].includes(u.protocol)?u.href:''}catch(e){return ''}}\nfunction msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
+function safeHttpUrl(v){try{const u=new URL(String(v||''),location.origin);return ['http:','https:'].includes(u.protocol)?u.href:''}catch(e){return ''}}
+function msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
 function chooseVehicle(v,el){vehicle=v;document.querySelectorAll('.vehicle').forEach(x=>x.classList.remove('active'));el.classList.add('active')}
 async function signup(){
  const email=emailEl().value.trim();
@@ -661,6 +662,9 @@ async function reviewDriver(driverId,action){
  msg('adminMsg',message);
  await loadAdminDrivers();
 }
-// IMPORTANTE: no iniciar automáticamente una sesión guardada.\n// Así HOLYN no vuelve a abrir el último usuario (por ejemplo, Administrador)\n// en otra PC/navegador. El usuario debe iniciar sesión explícitamente.\n
+// IMPORTANTE: no iniciar automáticamente una sesión guardada.
+// Así HOLYN no vuelve a abrir el último usuario (por ejemplo, Administrador)
+// en otra PC/navegador. El usuario debe iniciar sesión explícitamente.
+
 </script>
 </body></html>
