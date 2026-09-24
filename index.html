@@ -395,8 +395,10 @@ async function submitDriverRegistration(){
  if(error){console.error('HOLYN driver registration error',error);msg('registrationMsg','No pudimos enviar la solicitud. Código: '+(error.code||'')+' — '+(error.message||'Error de base de datos'));return}
  await sb.auth.updateUser({data:{full_name:document.getElementById('drvName').value.trim(),phone:document.getElementById('drvPhone').value.trim(),document_id:document.getElementById('drvId').value.trim(),driver_service:document.getElementById('drvService').value}});
  msg('registrationMsg','✅ Datos recibidos. Ahora adjunta los 5 documentos para completar la verificación.');
- loadDriver();
- document.getElementById('driverDocuments').scrollIntoView({behavior:'smooth',block:'start'});
+ await loadDriver();
+ const documentsCard=document.getElementById('driverDocuments');
+ documentsCard.classList.remove('hidden');
+ setTimeout(()=>documentsCard.scrollIntoView({behavior:'smooth',block:'start'}),100);
 }
 async function uploadDriverDocuments(){
  const docs=[
