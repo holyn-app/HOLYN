@@ -457,15 +457,7 @@ async function showCommissionPayment(){
  const qrUrl=safeHttpUrl(d.commission_payment_qr_url);
  document.getElementById('driverCommissionBox').innerHTML='<h3>🏦 Pagar comisión HOLYN</h3><p><b>Total pendiente: Gs. '+Number(cr.total_pending||0).toLocaleString()+'</b></p><p><b>Banco:</b> '+escapeHtml(d.commission_payment_bank||'Pendiente de configurar')+'</p><p><b>Titular:</b> '+escapeHtml(d.commission_payment_account_name||'Pendiente de configurar')+'</p><p><b>Cuenta:</b> '+escapeHtml(d.commission_payment_account_number||'Pendiente de configurar')+'</p><p><b>Alias:</b> '+escapeHtml(d.commission_payment_alias||'Pendiente de configurar')+'</p>'+(qrUrl?'<p><img src="'+escapeHtml(qrUrl)+'" style="max-width:220px;background:#fff;padding:8px;border-radius:12px"></p>':'')+'<p class="muted">Después de pagar, avisa a HOLYN. La cuenta se reactiva cuando confirmemos el pago.</p><button onclick="loadDriver()">Volver</button>';
 }
-async function ratePassenger(tripId,passengerId,rating){
- const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:passengerId,rating:rating},{onConflict:'trip_id,rater_id'});
- if(error){msg('driverMsg','No se pudo guardar la calificación.');return}
- msg('driverMsg','⭐ Gracias por calificar al pasajero.');loadDriver();
-}
-function passengerRatingButtons(t){
- if(t.status!=='completed'||!t.passenger_id)return '';
- return '<div style="margin-top:8px"><b>Califica al pasajero:</b> '+[1,2,3,4,5].map(n=>'<button onclick="ratePassenger(\''+t.id+'\',\''+t.passenger_id+'\','+n+')">'+n+'⭐</button>').join(' ')+'</div>';
-}
+
 async function acceptTrip(id){
  const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
  if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
@@ -478,7 +470,9 @@ async function acceptTrip(id){
  msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
 }
 async function rateTrip(tripId,driverId,rating){
- const {error}=await sb.from('ratings').upsert({trip_id:tripId,rater_id:profile.id,rated_id:driverId,rating:rating},{onConflict:'trip_id,rater_id'});
+ const {data:existing}=await sb.from('ratings').select('id').eq('trip_id',tripId).eq('passenger_id',profile.id).eq('driver_id',driverId).maybeSingle();
+ if(existing){msg('ratingBox','⭐ Ya calificaste este viaje.');return}
+ const {error}=await sb.from('ratings').insert({trip_id:tripId,passenger_id:profile.id,driver_id:driverId,stars:Number(rating)});
  if(error){msg('ratingBox','No se pudo guardar la calificación.');return}
  msg('ratingBox','⭐ Gracias por calificar a tu conductor.');loadPassenger();
 }
