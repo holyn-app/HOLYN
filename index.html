@@ -261,19 +261,27 @@ sb.auth.onAuthStateChange(async (event, session)=>{
 async function openDriverApplication(){
  const registration=document.getElementById('driverRegistration');
  const documents=document.getElementById('driverDocuments');
- registration.classList.remove('hidden');
+ registration.classList.add('hidden');
  documents.classList.add('hidden');
- await loadDriver();
- const {data:dp}=await sb.from('driver_profiles').select('is_approved,verification_status').eq('user_id',profile.id).maybeSingle();
- if(dp){
-   registration.classList.add('hidden');
-   if(!dp.is_approved){
-     documents.classList.remove('hidden');
-     documents.scrollIntoView({behavior:'smooth',block:'start'});
+ try{
+   const {data:dp,error}=await sb.from('driver_profiles').select('is_approved,verification_status').eq('user_id',profile.id).maybeSingle();
+   if(error) throw error;
+   if(dp){
+     if(dp.is_approved){
+       document.getElementById('driver').classList.remove('hidden');
+       document.getElementById('driver').scrollIntoView({behavior:'smooth',block:'start'});
+     }else{
+       documents.classList.remove('hidden');
+       documents.scrollIntoView({behavior:'smooth',block:'start'});
+     }
    }else{
-     document.getElementById('driver').scrollIntoView({behavior:'smooth',block:'start'});
+     registration.classList.remove('hidden');
+     registration.scrollIntoView({behavior:'smooth',block:'start'});
    }
- }else{
+ }catch(e){
+   console.error('HOLYN driver application navigation error',e);
+   registration.classList.remove('hidden');
+   msg('registrationMsg','No pudimos comprobar tu solicitud. Puedes completar el registro nuevamente.');
    registration.scrollIntoView({behavior:'smooth',block:'start'});
  }
 }
@@ -409,10 +417,10 @@ async function submitDriverRegistration(){
  if(error){console.error('HOLYN driver registration error',error);msg('registrationMsg','No pudimos enviar la solicitud. Código: '+(error.code||'')+' — '+(error.message||'Error de base de datos'));return}
  await sb.auth.updateUser({data:{full_name:document.getElementById('drvName').value.trim(),phone:document.getElementById('drvPhone').value.trim(),document_id:document.getElementById('drvId').value.trim(),driver_service:document.getElementById('drvService').value}});
  msg('registrationMsg','✅ Datos recibidos. Ahora adjunta los 5 documentos para completar la verificación.');
- await loadDriver();
  const documentsCard=document.getElementById('driverDocuments');
  documentsCard.classList.remove('hidden');
- setTimeout(()=>documentsCard.scrollIntoView({behavior:'smooth',block:'start'}),100);
+ documentsCard.scrollIntoView({behavior:'smooth',block:'start'});
+ try{ await loadDriver(); }catch(e){ console.error('HOLYN driver reload after registration',e); }
 }
 async function uploadDriverDocuments(){
  const docs=[
