@@ -261,23 +261,9 @@ sb.auth.onAuthStateChange(async (event, session)=>{
 function openDriverApplication(){
  const registration=document.getElementById('driverRegistration');
  const documents=document.getElementById('driverDocuments');
- const passenger=document.getElementById('passenger');
  registration.classList.remove('hidden');
  documents.classList.add('hidden');
  registration.scrollIntoView({behavior:'smooth',block:'start'});
- sb.from('driver_profiles').select('is_approved,verification_status').eq('user_id',profile.id).maybeSingle().then(({data:dp,error})=>{
-   if(error){console.error('HOLYN driver application lookup error',error);return}
-   if(dp){
-     registration.classList.add('hidden');
-     if(dp.is_approved){
-       document.getElementById('driver').classList.remove('hidden');
-       document.getElementById('driver').scrollIntoView({behavior:'smooth',block:'start'});
-     }else{
-       documents.classList.remove('hidden');
-       documents.scrollIntoView({behavior:'smooth',block:'start'});
-     }
-   }
- });
 }
 
 function toggleTransferBox(){
