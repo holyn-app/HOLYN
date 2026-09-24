@@ -48,6 +48,14 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div class="muted">Sesión activa</div><h2 id="who"></h2>
 <button class="secondary" onclick="logout()">Cerrar sesión</button>
 </div>
+<div id="ownerModeNav" class="card hidden">
+<div class="muted">CUENTA PROPIETARIA — ELIGE CÓMO QUIERES USAR HOLYN</div>
+<div class="grid" style="margin-top:10px">
+<button onclick="switchOwnerMode('passenger')">🚕 Pasajero</button>
+<button onclick="switchOwnerMode('driver')">🚗 Conductor</button>
+<button onclick="switchOwnerMode('admin')">🛡️ Administrador</button>
+</div>
+</div>
 
 <section id="passenger" class="hidden">
 <div class="card">
@@ -227,10 +235,45 @@ async function start(){
  document.getElementById('auth').classList.add('hidden');
  document.getElementById('app').classList.remove('hidden');
  document.getElementById('who').textContent=(profile.full_name||user.email)+' — '+profile.role;
- ['passenger','driver','admin'].forEach(x=>document.getElementById(x).classList.toggle('hidden',profile.role!==x));
- if(profile.role==='passenger'){loadPassenger();toggleTransferBox();}
- if(profile.role==='driver')loadDriver();
- if(profile.role==='admin')loadAdmin();
+ const ownerMode=isAdmin===true;
+ const ownerNav=document.getElementById('ownerModeNav');
+ if(ownerNav) ownerNav.classList.toggle('hidden',!ownerMode);
+ ['passenger','driver','admin'].forEach(x=>document.getElementById(x).classList.toggle('hidden',ownerMode?false:profile.role!==x));
+ if(ownerMode){
+   document.getElementById('driverRegistration')?.classList.add('hidden');
+   document.getElementById('driverDocuments')?.classList.add('hidden');
+   loadPassenger();
+   toggleTransferBox();
+   loadDriver();
+   loadAdmin();
+   switchOwnerMode('passenger');
+ }else{
+   if(profile.role==='passenger'){loadPassenger();toggleTransferBox();}
+   if(profile.role==='driver')loadDriver();
+   if(profile.role==='admin')loadAdmin();
+ }
+}
+
+function switchOwnerMode(mode){
+ const passenger=document.getElementById('passenger');
+ const driver=document.getElementById('driver');
+ const admin=document.getElementById('admin');
+ const registration=document.getElementById('driverRegistration');
+ const documents=document.getElementById('driverDocuments');
+ if(!passenger||!driver||!admin)return;
+ passenger.classList.toggle('hidden',mode!=='passenger');
+ admin.classList.toggle('hidden',mode!=='admin');
+ driver.classList.toggle('hidden',mode!=='driver');
+ registration.classList.add('hidden');
+ documents.classList.add('hidden');
+ if(mode==='passenger'){toggleTransferBox();loadPassenger();}
+ if(mode==='driver'){
+   registration.classList.remove('hidden');
+   documents.classList.remove('hidden');
+   loadDriver();
+   registration.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+ if(mode==='admin'){loadAdmin();admin.scrollIntoView({behavior:'smooth',block:'start'});}
 }
 
 async function forgotPassword(){
