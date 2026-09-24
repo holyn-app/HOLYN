@@ -216,7 +216,12 @@ async function start(){
  };
  // La cuenta propietaria es la única que puede obtener el panel admin.
  const {data:isAdmin}=await sb.rpc('is_admin');
- if(isAdmin===true) profile.role='admin';
+ if(isAdmin===true){
+   profile.role='admin';
+ }else if(profile.role==='admin'){
+   // Un perfil marcado como admin no basta: solo la cuenta propietaria puede usar el panel.
+   profile.role='passenger';
+ }
  const validRoles=['passenger','driver','admin'];
  if(!validRoles.includes(profile.role)) profile.role='passenger';
  document.getElementById('auth').classList.add('hidden');
