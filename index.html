@@ -416,6 +416,20 @@ function startDriverLocation(){
 function stopDriverLocation(){
  if(locationWatchId!==null){navigator.geolocation.clearWatch(locationWatchId);locationWatchId=null}
 }
+async function refreshDriverRequests(){
+ const box=document.getElementById('requests');
+ if(!box)return;
+ box.innerHTML='<span class="muted">Buscando solicitudes de viaje...</span>';
+ const rpc=await sb.rpc('get_available_trips_for_driver');
+ let req=rpc.data||[], err=rpc.error||null;
+ if(!err && req.length===0){
+   const fb=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);
+   if(!fb.error && (fb.data||[]).length)req=fb.data;
+   else if(fb.error)err=fb.error;
+ }
+ if(err){box.innerHTML='<p>⚠️ No pudimos cargar solicitudes: '+escapeHtml(err.message||'error')+'</p>';return}
+ box.innerHTML=req.length?req.map(t=>'<div class="card"><b>🚕 SOLICITUD DE VIAJE</b><br>'+escapeHtml(t.vehicle_type)+' · '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'<br><button onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">Aceptar viaje</button></div>').join(''):'<span class="muted">No hay solicitudes ahora.</span>';
+}
 async function loadDriver(){
  const {data:dp}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
  if(dp?.is_online && dp?.is_approved)startDriverLocation();
