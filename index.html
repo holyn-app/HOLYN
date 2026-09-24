@@ -661,6 +661,6 @@ async function reviewDriver(driverId,action){
  msg('adminMsg',message);
  await loadAdminDrivers();
 }
-sb.auth.getSession().then(({data})=>{if(data.session)start()});
+// IMPORTANTE: no iniciar automáticamente una sesión guardada.\n// Así HOLYN no vuelve a abrir el último usuario (por ejemplo, Administrador)\n// en otra PC/navegador. El usuario debe iniciar sesión explícitamente.\n
 </script>
 </body></html>
