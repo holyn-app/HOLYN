@@ -61,6 +61,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div class="card">
 <h2>🚕 Pedir un viaje</h2>
 <label>¿A dónde vas?</label><input id="destination" placeholder="Destino">
+<label>¿Dónde estás?</label><input id="originAddress" placeholder="Origen (opcional si permites ubicación)">
 <div class="grid">
 <div class="vehicle" onclick="chooseVehicle('HOLYN',this)"><b>HOLYN</b><br><span class="muted">Viaje estándar</span></div>
 <div class="vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>HOLYN Plus</b><br><span class="muted">Más comodidad</span></div>
@@ -320,9 +321,13 @@ function toggleTransferBox(){
 async function requestTrip(){
  const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
  if(!destination||fare<=0){msg('passengerMsg','Completa destino y precio.');return}
- msg('passengerMsg','📍 Obteniendo tu ubicación y preparando el viaje...');
- const origin=await getCurrentPosition();
- if(!origin){msg('passengerMsg','⚠️ Necesitamos tu ubicación para solicitar el viaje. Activa la ubicación del dispositivo e inténtalo nuevamente.');return}
+ msg('passengerMsg','📍 Preparando tu viaje...');
+ let origin=await getCurrentPosition();
+ if(!origin){
+   const originText=document.getElementById('originAddress')?.value.trim();
+   if(originText) origin=await geocodeDestination(originText);
+ }
+ if(!origin){msg('passengerMsg','⚠️ No pudimos obtener tu ubicación. Activa la ubicación o escribe tu punto de partida.');return}
  const dest=await geocodeDestination(destination);
  if(!dest){msg('passengerMsg','No pudimos encontrar ese destino. Prueba con una dirección o lugar más específico.');return}
  passengerLocation=origin;
