@@ -258,10 +258,24 @@ sb.auth.onAuthStateChange(async (event, session)=>{
  }
 });
 
-function openDriverApplication(){
- document.getElementById('driverRegistration').classList.remove('hidden');
- document.getElementById('driverRegistration').scrollIntoView({behavior:'smooth',block:'start'});
- loadDriver();
+async function openDriverApplication(){
+ const registration=document.getElementById('driverRegistration');
+ const documents=document.getElementById('driverDocuments');
+ registration.classList.remove('hidden');
+ documents.classList.add('hidden');
+ await loadDriver();
+ const {data:dp}=await sb.from('driver_profiles').select('is_approved,verification_status').eq('user_id',profile.id).maybeSingle();
+ if(dp){
+   registration.classList.add('hidden');
+   if(!dp.is_approved){
+     documents.classList.remove('hidden');
+     documents.scrollIntoView({behavior:'smooth',block:'start'});
+   }else{
+     document.getElementById('driver').scrollIntoView({behavior:'smooth',block:'start'});
+   }
+ }else{
+   registration.scrollIntoView({behavior:'smooth',block:'start'});
+ }
 }
 
 function toggleTransferBox(){
