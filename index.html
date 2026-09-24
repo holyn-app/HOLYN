@@ -426,6 +426,7 @@ async function loadDriver(){
    msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');loadDriver();
  }).subscribe();
  const approved=dp?.is_approved===true;
+ // HOLYN_SYNC: status and requests are refreshed from the database on every driver-mode load.
  const {data:cs}=await sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id});
  const cr=cs?.[0]||{}; const total=Number(cr.total_pending||0); const overdue=Number(cr.overdue||0);
  document.getElementById('driverCommissionBox').innerHTML='<h3>💰 Comisión HOLYN</h3><p><b>Pendiente: Gs. '+total.toLocaleString()+'</b></p>'+(overdue>0?'<p style="color:#ff8f8f"><b>⚠️ Vencido: Gs. '+overdue.toLocaleString()+'</b></p>':'')+(total>0?'<button onclick="showCommissionPayment()">💳 Pagar comisión HOLYN</button>':'<p class="muted">No tienes comisión pendiente.</p>');
