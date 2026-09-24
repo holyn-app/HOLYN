@@ -320,7 +320,7 @@ async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
  document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.vehicle_type)+'</b> → '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+escapeHtml(t.cancellation_reason):'')+cancelTripButton(t)+ratingButtons(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
  const active=(data||[]).find(t=>['requested','accepted','arriving','in_progress'].includes(t.status));
- if(active && active.payment_method==='card'){ showTransferInstructions(); }
+ if(active && active.payment_method==='bank_transfer'){ showTransferInstructions(); }
  if(active){
    if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
    if(active.destination_lat&&active.destination_lng&&tripMap&&passengerLocation)drawRoute(passengerLocation,{lat:Number(active.destination_lat),lng:Number(active.destination_lng)});
