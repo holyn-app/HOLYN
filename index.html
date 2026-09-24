@@ -59,7 +59,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <div class="vehicle" onclick="chooseVehicle('HOLYN Moto',this)"><b>HOLYN Moto</b><br><span class="muted">Moto</span></div>
 <div class="vehicle" onclick="chooseVehicle('Paquetería',this)"><b>📦 Paquetería</b><br><span class="muted">Entrega</span></div>
 </div>
-<label>Método de pago</label><select id="payment" onchange="toggleTransferBox()"><option value="card">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
+<label>Método de pago</label><select id="payment" onchange="toggleTransferBox()"><option value="bank_transfer">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
 <div id="transferBox" class="msg">
 <b>🏦 Pago por transferencia</b>
 <p class="muted">El pago se realiza directamente al conductor al finalizar el viaje. HOLYN no recibe el dinero del viaje.</p>
@@ -282,7 +282,7 @@ function openDriverApplication(){
 
 function toggleTransferBox(){
  const payment=document.getElementById('payment')?.value;
- document.getElementById('transferBox')?.classList.toggle('hidden',payment!=='card');
+ document.getElementById('transferBox')?.classList.toggle('hidden',payment!=='bank_transfer');
 }
 async function requestTrip(){
  const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
@@ -309,7 +309,7 @@ async function requestTrip(){
    driver_amount:driverAmount,payment_method:payment,status:'requested'
  }).select('id').single();
  if(error||!trip){msg('passengerMsg','No se pudo solicitar el viaje. Inténtalo nuevamente.');return}
- msg('passengerMsg',payment==='card'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
+ msg('passengerMsg',payment==='bank_transfer'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
  loadPassenger();
 }
 async function showTransferInstructions(){
@@ -330,7 +330,7 @@ function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.g
 function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.vehicle_type)+'</b> → '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+escapeHtml(t.cancellation_reason):'')+cancelTripButton(t)+ratingButtons(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
+ document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.vehicle_type)+'</b> → '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+escapeHtml(t.cancellation_reason):'')+cancelTripButton(t)+ratingButtons(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
  const active=(data||[]).find(t=>['requested','accepted','arriving','in_progress'].includes(t.status));
  if(active && active.payment_method==='card'){ showTransferInstructions(); }
  if(active){
@@ -399,7 +399,7 @@ async function loadDriver(){
  const {data:req,error}=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).eq('vehicle_type',dp?.vehicle_type||'HOLYN').order('requested_at',{ascending:true}).limit(20);
  document.getElementById('requests').innerHTML=!canOperate?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes.</p>':(req||[]).map(t=>`<div class="card"><b>${escapeHtml(t.vehicle_type)}</b> · ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${escapeHtml(t.id)}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='card'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
+ document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+passengerRatingButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
@@ -548,7 +548,7 @@ async function togglePassengerAccount(id,active){
 async function loadAdminTrips(){
  const box=document.getElementById('adminTrips'); const {data,error}=await sb.from('trips').select('id,passenger_id,driver_id,destination_text,vehicle_type,estimated_fare,final_fare,holyn_commission,driver_amount,payment_method,status,requested_at').order('requested_at',{ascending:false}).limit(100);
  if(error){box.innerHTML='<p>No pudimos cargar viajes.</p>';return}
- box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${escapeHtml(t.vehicle_type)}</b> → ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='card'?'🏦 Transferencia al conductor':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
+ box.innerHTML=(data||[]).map(t=>`<div class="card"><b>${escapeHtml(t.vehicle_type)}</b> → ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.final_fare??t.estimated_fare??0).toLocaleString()} · HOLYN: Gs. ${Number(t.holyn_commission||0).toLocaleString()} · ${t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo'}<br><b>${t.status}</b> · ${new Date(t.requested_at).toLocaleString()}</div>`).join('')||'<span class="muted">No hay viajes.</span>';
 }
 async function loadAdminSupport(){
  const box=document.getElementById('adminSupport'); const {data,error}=await sb.from('support_tickets').select('*').order('created_at',{ascending:false}).limit(100);
