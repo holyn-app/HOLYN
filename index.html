@@ -101,7 +101,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <label>🪪 Licencia — dorso</label><input id="docLicenseBack" type="file" accept="image/*">
 <label>🚘 Cédula del vehículo — frente</label><input id="docVehicleFront" type="file" accept="image/*">
 <label>🚘 Cédula del vehículo — dorso</label><input id="docVehicleBack" type="file" accept="image/*">
-<button onclick="uploadDriverDocuments()">Enviar documentos para revisión</button>
+<button id="uploadDocumentsButton" onclick="uploadDriverDocuments()" disabled>Completa primero el registro para enviar los documentos</button>
 <div id="documentsMsg" class="msg hidden"></div>
 </div><section id="driver" class="hidden">
 <div class="card"><h2>🚗 Panel del conductor</h2>
@@ -262,7 +262,9 @@ function openDriverApplication(){
  const registration=document.getElementById('driverRegistration');
  const documents=document.getElementById('driverDocuments');
  registration.classList.remove('hidden');
- documents.classList.add('hidden');
+ documents.classList.remove('hidden');
+ const uploadButton=document.getElementById('uploadDocumentsButton');
+ if(uploadButton)uploadButton.disabled=true;
  registration.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -399,8 +401,12 @@ async function submitDriverRegistration(){
  msg('registrationMsg','✅ Datos recibidos. Ahora adjunta los 5 documentos para completar la verificación.');
  const documentsCard=document.getElementById('driverDocuments');
  documentsCard.classList.remove('hidden');
+ const uploadButton=document.getElementById('uploadDocumentsButton');
+ if(uploadButton){
+   uploadButton.disabled=false;
+   uploadButton.textContent='Enviar documentos para revisión';
+ }
  documentsCard.scrollIntoView({behavior:'smooth',block:'start'});
- try{ await loadDriver(); }catch(e){ console.error('HOLYN driver reload after registration',e); }
 }
 async function uploadDriverDocuments(){
  const docs=[
