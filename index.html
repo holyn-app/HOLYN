@@ -208,19 +208,16 @@ async function logout(){await sb.auth.signOut();location.reload()}
 async function start(){
  const {data:{user}}=await sb.auth.getUser();
  if(!user)return;
- // El perfil es útil para el rol, pero un problema de permisos no debe bloquear la sesión.
- const r=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
- const fallbackRole='passenger';
- profile=r.data || {
+ const {data:profileRow}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
+ profile=profileRow || {
    id:user.id,
    full_name:user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
-   role:fallbackRole
+   role:'passenger'
  };
- // El rol SIEMPRE viene del perfil real de Supabase.
- // No se fuerza admin por correo: así una cuenta de pasajero/conductor nunca
- // entra accidentalmente al panel de administración, incluso desde otra PC.
+ // La cuenta propietaria es la única que puede obtener el panel admin.
+ const {data:isAdmin}=await sb.rpc('is_admin');
+ if(isAdmin===true) profile.role='admin';
  const validRoles=['passenger','driver','admin'];
- if(!validRoles.includes(profile.role)) profile.role=fallbackRole;
  if(!validRoles.includes(profile.role)) profile.role='passenger';
  document.getElementById('auth').classList.add('hidden');
  document.getElementById('app').classList.remove('hidden');
