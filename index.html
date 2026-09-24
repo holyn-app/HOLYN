@@ -474,7 +474,7 @@ async function rateTrip(tripId,driverId,rating){
 }
 function cancelTripButton(t){
  if(!['requested','accepted'].includes(t.status))return '';
- return '<br><button onclick="cancelTrip(\\''+t.id+'\\')">❌ Cancelar viaje</button>';
+ return '<br><button onclick="cancelTrip(\''+t.id+'\')">❌ Cancelar viaje</button>';
 }
 async function cancelTrip(id){
  const {data:t,error:readError}=await sb.from('trips').select('status').eq('id',id).eq('passenger_id',profile.id).maybeSingle();
