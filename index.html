@@ -49,7 +49,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <button class="secondary" onclick="logout()">Cerrar sesión</button>
 </div>
 <div id="ownerModeNav" class="card hidden">
-<div class="muted">CUENTA PROPIETARIA — ELIGE CÓMO QUIERES USAR HOLYN</div>
+<div class="muted">CUENTA PROPIETARIA — ELIGE CÓMO QUIERES USAR HOLYN</div><div class="muted" style="font-size:12px;margin-top:6px">HOLYN • Motor de solicitudes actualizado</div>
 <div class="grid" style="margin-top:10px">
 <button onclick="switchOwnerMode('passenger')">🚕 Pasajero</button>
 <button onclick="switchOwnerMode('driver')">🚗 Conductor</button>
@@ -272,6 +272,7 @@ function switchOwnerMode(mode){
    registration.classList.remove('hidden');
    documents.classList.remove('hidden');
    loadDriver();
+   setTimeout(loadDriver,600);
    registration.scrollIntoView({behavior:'smooth',block:'start'});
  }
  if(mode==='admin'){loadAdmin();admin.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -434,8 +435,15 @@ async function loadDriver(){
  document.getElementById('onlineBtn').disabled=!canOperate;
  document.getElementById('onlineBtn').textContent=dp?.account_status==='suspended'?'🔒 CUENTA SUSPENDIDA':(approved?(dp?.is_online?'🟢 EN LÍNEA':'Ponerme EN LÍNEA'):'🔒 Pendiente de aprobación');
  document.getElementById('driverStatus').textContent=dp?.account_status==='suspended'?'🔒 Cuenta suspendida por comisión pendiente. Paga la deuda para reactivarla.':(approved?'✅ Conductor aprobado. Ya puedes recibir viajes.':'🟡 Solicitud pendiente de revisión por HOLYN.');
- const {data:req,error}=await sb.rpc('get_available_trips_for_driver');
- document.getElementById('requests').innerHTML=!canOperate?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(error?'<p>No pudimos cargar solicitudes: '+escapeHtml(error.message||'error')+'</p>':(req||[]).map(t=>`<div class="card"><b>${escapeHtml(t.vehicle_type)}</b> · ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${escapeHtml(t.id)}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
+ let req=[],reqError=null;
+ const rpc=await sb.rpc('get_available_trips_for_driver');
+ req=rpc.data||[]; reqError=rpc.error||null;
+ if(!reqError && req.length===0 && canOperate){
+   const fallback=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);
+   if(!fallback.error && (fallback.data||[]).length) req=fallback.data;
+   else if(fallback.error && !reqError) reqError=fallback.error;
+ }
+ document.getElementById('requests').innerHTML=!canOperate?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(reqError?'<p>⚠️ No pudimos cargar solicitudes: '+escapeHtml(reqError.message||'error')+'</p>':(req||[]).map(t=>`<div class="card"><b>🚕 SOLICITUD</b><br>${escapeHtml(t.vehicle_type)} · ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${escapeHtml(t.id)}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
  const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
  document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
