@@ -539,7 +539,6 @@ function renderDriverHome(dp){
  const v=document.getElementById('driverVehicleLabel');if(v)v.textContent=dp?.vehicle_type||'HOLYN';
  if(online)startDriverMapWatch(); else stopDriverMapWatch();
 }
-let driverLoadSeq=0;
 async function loadDriver(){
  const seq=++driverLoadSeq;
  if(!profile?.id)return;
