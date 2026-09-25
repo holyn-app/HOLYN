@@ -272,7 +272,6 @@ function switchOwnerMode(mode){
    registration.classList.remove('hidden');
    documents.classList.remove('hidden');
    loadDriver();
-   setTimeout(loadDriver,600);
    registration.scrollIntoView({behavior:'smooth',block:'start'});
  }
  if(mode==='admin'){loadAdmin();admin.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -430,37 +429,39 @@ async function refreshDriverRequests(){
  if(err){box.innerHTML='<p>⚠️ No pudimos cargar solicitudes: '+escapeHtml(err.message||'error')+'</p>';return}
  box.innerHTML=req.length?req.map(t=>'<div class="card"><b>🚕 SOLICITUD DE VIAJE</b><br>'+escapeHtml(t.vehicle_type)+' · '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'<br><button onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">Aceptar viaje</button></div>').join(''):'<span class="muted">No hay solicitudes ahora.</span>';
 }
+let driverLoadSeq=0;
 async function loadDriver(){
- const {data:dp}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
- if(dp?.is_online && dp?.is_approved)startDriverLocation();
- if(driverChannel)await sb.removeChannel(driverChannel);
- driverChannel=sb.channel('holyn-driver-'+profile.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'trips',filter:'status=eq.requested'},payload=>{
-   if(dp?.is_online && dp?.is_approved){msg('driverMsg','🔔 ¡Tienes una nueva solicitud de viaje!');loadDriver();}
- }).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'driver_id=eq.'+profile.id},payload=>{
-   msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');loadDriver();
- }).subscribe();
- const approved=dp?.is_approved===true;
- // HOLYN_SYNC: status and requests are refreshed from the database on every driver-mode load.
- const {data:cs}=await sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id});
- const cr=cs?.[0]||{}; const total=Number(cr.total_pending||0); const overdue=Number(cr.overdue||0);
- document.getElementById('driverCommissionBox').innerHTML='<h3>💰 Comisión HOLYN</h3><p><b>Pendiente: Gs. '+total.toLocaleString()+'</b></p>'+(overdue>0?'<p style="color:#ff8f8f"><b>⚠️ Vencido: Gs. '+overdue.toLocaleString()+'</b></p>':'')+(total>0?'<button onclick="showCommissionPayment()">💳 Pagar comisión HOLYN</button>':'<p class="muted">No tienes comisión pendiente.</p>');
- document.getElementById('driverRegistration').classList.toggle('hidden',!!dp);
- document.getElementById('driverDocuments').classList.toggle('hidden',!dp || approved); 
- const canOperate=approved && dp?.account_status!=='suspended';
- document.getElementById('onlineBtn').disabled=!canOperate;
- document.getElementById('onlineBtn').textContent=dp?.account_status==='suspended'?'🔒 CUENTA SUSPENDIDA':(approved?(dp?.is_online?'🟢 EN LÍNEA':'Ponerme EN LÍNEA'):'🔒 Pendiente de aprobación');
- document.getElementById('driverStatus').textContent=dp?.account_status==='suspended'?'🔒 Cuenta suspendida por comisión pendiente. Paga la deuda para reactivarla.':(approved?'✅ Conductor aprobado. Ya puedes recibir viajes.':'🟡 Solicitud pendiente de revisión por HOLYN.');
+ const seq=++driverLoadSeq;
+ if(!profile?.id)return;
+ const status=document.getElementById('driverStatus'),requests=document.getElementById('requests'),commission=document.getElementById('driverCommissionBox'),trips=document.getElementById('driverTrips');
+ if(status)status.textContent='Consultando estado del conductor...';
+ if(requests)requests.innerHTML='<span class="muted">Buscando solicitudes de viaje...</span>';
+ const {data:dp,error:dpError}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();
+ if(seq!==driverLoadSeq)return;
+ if(dpError||!dp){
+   if(status)status.textContent='⚠️ No se pudo consultar el perfil de conductor.';
+   return;
+ }
+ const approved=dp.is_approved===true, canOperate=approved&&dp.account_status!=='suspended';
+ if(status)status.textContent=dp.account_status==='suspended'?'🔒 Cuenta suspendida por comisión pendiente. Paga la deuda para reactivarla.':(approved?'✅ Conductor aprobado. Ya puedes recibir viajes.':'🟡 Solicitud pendiente de revisión por HOLYN.');
+ const onlineBtn=document.getElementById('onlineBtn');
+ if(onlineBtn){onlineBtn.disabled=!canOperate;onlineBtn.textContent=dp.account_status==='suspended'?'🔒 CUENTA SUSPENDIDA':(approved?(dp.is_online?'🟢 EN LÍNEA':'Ponerme EN LÍNEA'):'🔒 Pendiente de aprobación');}
+ if(dp.is_online&&approved)startDriverLocation();
  let req=[],reqError=null;
  const rpc=await sb.rpc('get_available_trips_for_driver');
+ if(seq!==driverLoadSeq)return;
  req=rpc.data||[]; reqError=rpc.error||null;
- if(!reqError && req.length===0 && canOperate){
-   const fallback=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);
-   if(!fallback.error && (fallback.data||[]).length) req=fallback.data;
-   else if(fallback.error && !reqError) reqError=fallback.error;
+ if(!reqError&&req.length===0&&canOperate){
+   const fb=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);
+   if(seq!==driverLoadSeq)return;
+   if(!fb.error)req=fb.data||[]; else reqError=fb.error;
  }
- document.getElementById('requests').innerHTML=!canOperate?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':(reqError?'<p>⚠️ No pudimos cargar solicitudes: '+escapeHtml(reqError.message||'error')+'</p>':(req||[]).map(t=>`<div class="card"><b>🚕 SOLICITUD</b><br>${escapeHtml(t.vehicle_type)} · ${escapeHtml(t.destination_text)}<br>Gs. ${Number(t.estimated_fare).toLocaleString()}<br><button onclick="acceptTrip('${escapeHtml(t.id)}')">Aceptar</button></div>`).join('')||'<span class="muted">No hay solicitudes ahora.</span>');
- const {data:mine}=await sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20);
- document.getElementById('driverTrips').innerHTML=(mine||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
+ if(requests)requests.innerHTML=!canOperate?'<span class="muted">Las solicitudes aparecerán cuando tu cuenta sea aprobada.</span>':reqError?'<p>⚠️ No pudimos cargar solicitudes: '+escapeHtml(reqError.message||'error')+'</p>':(req.length?req.map(t=>'<div class="card"><b>🚕 SOLICITUD DE VIAJE</b><br>'+escapeHtml(t.vehicle_type)+' · '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'<br><button onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">Aceptar viaje</button></div>').join(''):'<span class="muted">No hay solicitudes ahora.</span>');
+ const [cs,mine]=await Promise.all([sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id}),sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(20)]);
+ if(seq!==driverLoadSeq)return;
+ const cr=cs.data?.[0]||{},total=Number(cr.total_pending||0),overdue=Number(cr.overdue||0);
+ if(commission)commission.innerHTML='<h3>💰 Comisión HOLYN</h3><p><b>Pendiente: Gs. '+total.toLocaleString()+'</b></p>'+(overdue>0?'<p style="color:#ff8f8f"><b>⚠️ Vencido: Gs. '+overdue.toLocaleString()+'</b></p>':'')+(total>0?'<button onclick="showCommissionPayment()">💳 Pagar comisión HOLYN</button>':'<p class="muted">No tienes comisión pendiente.</p>');
+ if(trips)trips.innerHTML=(mine.data||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
