@@ -4,16 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HOLYN — Conectada</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-// Refuerzo de interacción del botón CONECTAR/DESCONECTAR.
-document.addEventListener('DOMContentLoaded',()=>{
- const onlineBtn=document.getElementById('onlineBtn');
- if(onlineBtn){
-  onlineBtn.type='button';
-  onlineBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggleOnline();});
- }
-});
-</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#071426;color:#fff}
 header{padding:18px 22px;background:#0b1d35;display:flex;justify-content:space-between;align-items:center}
@@ -36,11 +27,11 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 .driver-status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#8493a3;margin-right:7px}
 .driver-online .driver-status-dot{background:#35e58a;box-shadow:0 0 0 5px rgba(53,229,138,.14)}
 .driver-offline .driver-status-dot{background:#8493a3}
-.driver-center-control{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;pointer-events:auto}
+.driver-center-control{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;pointer-events:auto}
 .driver-orb{width:148px;height:148px;border-radius:50%;border:7px solid rgba(255,255,255,.92);background:rgba(7,20,38,.94);color:#fff;font-size:17px;font-weight:900;letter-spacing:.4px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 18px 55px rgba(0,0,0,.38),0 0 0 10px rgba(7,20,38,.16);margin:0}
 .driver-orb span{font-size:30px;margin-bottom:4px}
 .driver-orb.online{border-color:#35e58a;box-shadow:0 18px 55px rgba(0,0,0,.38),0 0 0 10px rgba(53,229,138,.12)}
-.driver-orb.offline{border-color:#b8c4d0}
+.driver-orb.offline{border-color:#b8c4d0}.driver-orb.offline.pulse{animation:holynOfflinePulse 1.9s infinite}@keyframes holynOfflinePulse{0%,100%{transform:scale(1);box-shadow:0 18px 55px rgba(0,0,0,.38),0 0 0 8px rgba(184,196,208,.06)}50%{transform:scale(1.025);box-shadow:0 18px 55px rgba(0,0,0,.38),0 0 0 18px rgba(184,196,208,.015)}}
 .driver-orb.pulse{animation:holynPulse 1.7s infinite}
 @keyframes holynPulse{0%,100%{transform:scale(1);box-shadow:0 18px 55px rgba(0,0,0,.38),0 0 0 10px rgba(53,229,138,.12)}50%{transform:scale(1.045);box-shadow:0 18px 55px rgba(0,0,0,.38),0 0 0 24px rgba(53,229,138,.03)}}
 .driver-center-label{margin-top:14px;background:rgba(7,20,38,.9);backdrop-filter:blur(10px);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700}
@@ -460,6 +451,24 @@ async function loadPassenger(){
  if(tripChannel)await sb.removeChannel(tripChannel);
  tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{const t=payload.new;msg('passengerMsg',t.status==='accepted'?'🚗 ¡Conductor encontrado! Tu viaje fue aceptado.':t.status==='completed'?'✅ Viaje finalizado.':t.status==='cancelled'?'⚠️ Viaje cancelado.':'🔄 Tu viaje se actualizó.');loadPassenger()}).subscribe();
 }
+let holynAudioContext=null;
+function holynBeep(online){
+ try{
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return;
+  holynAudioContext=holynAudioContext||new AC();
+  if(holynAudioContext.state==='suspended')holynAudioContext.resume();
+  const now=holynAudioContext.currentTime;
+  const osc=holynAudioContext.createOscillator(),gain=holynAudioContext.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(online?620:280,now);
+  osc.frequency.exponentialRampToValueAtTime(online?900:180,now+0.16);
+  gain.gain.setValueAtTime(0.0001,now);
+  gain.gain.exponentialRampToValueAtTime(0.16,now+0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001,now+0.22);
+  osc.connect(gain);gain.connect(holynAudioContext.destination);osc.start(now);osc.stop(now+0.24);
+ }catch(e){}
+}
 async function toggleOnline(){
  const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
  if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
@@ -475,7 +484,7 @@ async function toggleOnline(){
    msg('driverMsg',r.error.message==='DRIVER_NOT_APPROVED'?'🔒 Tu cuenta no está aprobada.':('No se pudo cambiar estado: '+r.error.message));
    return;
  }
- msg('driverMsg',next?'🟢 Estás EN LÍNEA.':'⚪ Estás FUERA DE LÍNEA.');
+ msg('driverMsg',next?'🟢 Estás EN LÍNEA.':'⚪ Estás FUERA DE LÍNEA.'); holynBeep(next);
  if(next)startDriverLocation(); else stopDriverLocation();
  loadDriver();
 }
@@ -537,7 +546,7 @@ function renderDriverHome(dp){
  const online=dp?.is_online===true,approved=dp?.is_approved===true,suspended=dp?.account_status==='suspended';
  const orb=document.getElementById('onlineBtn'),mode=document.getElementById('driverModeText'),label=document.getElementById('driverCenterLabel'),dot=document.getElementById('driverStatusDot');
  if(!orb)return;
- orb.classList.toggle('online',online);orb.classList.toggle('offline',!online);orb.classList.toggle('pulse',online);
+ orb.classList.toggle('online',online);orb.classList.toggle('offline',!online);orb.classList.toggle('pulse',true);
  orb.disabled=!approved||suspended;
  orb.innerHTML='<span>'+(online?'✓':'⚡')+'</span><b>'+(suspended?'BLOQUEADO':approved?(online?'DESCONECTAR':'CONECTAR'):'EN REVISIÓN')+'</b>';
  mode.textContent=online?'CONECTADO':'DESCONECTADO';
@@ -880,5 +889,10 @@ async function reviewDriver(driverId,action){
 // Así HOLYN no vuelve a abrir el último usuario (por ejemplo, Administrador)
 // en otra PC/navegador. El usuario debe iniciar sesión explícitamente.
 
+// Refuerzo de interacción del botón CONECTAR/DESCONECTAR.
+document.addEventListener('DOMContentLoaded',()=>{
+ const onlineBtn=document.getElementById('onlineBtn');
+ if(onlineBtn){onlineBtn.type='button';onlineBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggleOnline();});}
+});
 </script>
 </body></html>
