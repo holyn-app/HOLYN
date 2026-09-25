@@ -1,4 +1,3 @@
- initPassengerHome();
 <!doctype html>
 <html lang="es">
 <head>
@@ -15,7 +14,7 @@ h1,h2{margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minm
 button{border:0;border-radius:12px;padding:13px 16px;background:#1597ee;color:#fff;font-weight:700;cursor:pointer;margin:5px 4px 5px 0}
 button.secondary{background:#203c5d}button.danger{background:#a33}
 input,select{width:100%;padding:13px;border-radius:10px;border:1px solid #36506c;background:#091a2e;color:#fff;margin:6px 0 12px}
-.hidden{display:none}.msg{padding:12px;border-radius:10px;background:#0a3149;margin:10px 0}.muted{color:#a9bad0;font-size:14px}
+.hidden{display:none}.auth-panel{position:relative;z-index:5}.msg{padding:12px;border-radius:10px;background:#0a3149;margin:10px 0}.muted{color:#a9bad0;font-size:14px}
 .vehicle{padding:15px;border:1px solid #315070;border-radius:14px;cursor:pointer}.vehicle.active{border-color:#27a7ff;background:#123653}
 table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px solid #29435f;text-align:left}
 .adminnav{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.adminnav button{margin:0}.adminTab.hidden{display:none!important}
@@ -60,7 +59,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <body>
 <header><div class="logo">HOL<span>YN</span></div><div class="muted">Tu camino, más fácil.</div></header>
 <main>
-<div id="auth" class="card">
+<div id="auth" class="card auth-panel">
 <h1>Bienvenido a HOLYN</h1>
 <p class="muted">Tu camino, más fácil.</p>
 <div class="grid">
@@ -70,7 +69,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <label>Nombre (solo para registrarte)</label><input id="name" placeholder="Tu nombre">
 <label>Tipo de cuenta</label>
 <select id="role"><option value="passenger">Pasajero</option><option value="driver">Conductor</option></select>
-<button onclick="login()">Iniciar sesión</button>
+<button id="loginBtn" type="button" onclick="login()">Iniciar sesión</button>
 <button class="secondary" onclick="signup()">Crear mi cuenta</button>
 <button class="secondary" onclick="forgotPassword()">¿Olvidaste tu contraseña?</button>
 <div id="authMsg" class="msg hidden"></div>
@@ -279,6 +278,8 @@ async function login(){
    if(button){button.disabled=false;button.textContent='Iniciar sesión'}
  }
 }
+
+document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('loginBtn');if(b){b.addEventListener('click',e=>{e.preventDefault();login()})}const p=document.getElementById('password');if(p)p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();login()}})});
 async function logout(){await sb.auth.signOut();location.reload()}
 async function start(){
  const {data:{user}}=await sb.auth.getUser();
