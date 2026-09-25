@@ -548,7 +548,7 @@ function renderDriverHome(dp){
  if(!orb)return;
  orb.classList.toggle('online',online);orb.classList.toggle('offline',!online);orb.classList.toggle('pulse',true);
  orb.disabled=!approved||suspended;
- orb.innerHTML='<span>'+(online?'✓':'⚡')+'</span><b>'+(suspended?'BLOQUEADO':approved?(online?'DESCONECTAR':'CONECTAR'):'EN REVISIÓN')+'</b>';
+ orb.innerHTML='<span>'+(online?'✓':'⚡')+'</span><b>'+(suspended?'BLOQUEADO':approved?(online?'CONECTADO':'DESCONECTADO'):'EN REVISIÓN')+'</b>';
  mode.textContent=online?'CONECTADO':'DESCONECTADO';
  if(suspended)mode.textContent='CUENTA BLOQUEADA';
  if(!approved&&!suspended)mode.textContent='EN REVISIÓN';
