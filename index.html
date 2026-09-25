@@ -484,7 +484,15 @@ async function toggleOnline(){
    msg('driverMsg',r.error.message==='DRIVER_NOT_APPROVED'?'🔒 Tu cuenta no está aprobada.':('No se pudo cambiar estado: '+r.error.message));
    return;
  }
- msg('driverMsg',next?'🟢 Estás EN LÍNEA.':'⚪ Estás FUERA DE LÍNEA.'); holynBeep(next);
+ msg('driverMsg',next?'🟢 Estás EN LÍNEA.':'⚪ Estás FUERA DE LÍNEA.');
+ const liveBtn=document.getElementById('onlineBtn');
+ if(liveBtn){
+   liveBtn.classList.toggle('online',next);liveBtn.classList.toggle('offline',!next);liveBtn.classList.add('pulse');
+   liveBtn.innerHTML='<span>'+(next?'✓':'⚡')+'</span><b>'+(next?'CONECTADO':'DESCONECTADO')+'</b>';
+ }
+ const liveMode=document.getElementById('driverModeText');if(liveMode)liveMode.textContent=next?'CONECTADO':'DESCONECTADO';
+ const liveLabel=document.getElementById('driverCenterLabel');if(liveLabel)liveLabel.textContent=next?'Estás disponible para recibir viajes':'Toca para comenzar a recibir viajes';
+ holynBeep(next);
  if(next)startDriverLocation(); else stopDriverLocation();
  loadDriver();
 }
