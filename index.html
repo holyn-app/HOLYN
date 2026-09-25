@@ -1,3 +1,4 @@
+ initPassengerHome();
 <!doctype html>
 <html lang="es">
 <head>
@@ -41,6 +42,19 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 .driver-request{position:absolute;z-index:700;left:16px;right:16px;bottom:105px;background:rgba(7,20,38,.96);backdrop-filter:blur(16px);border:1px solid #35e58a;border-radius:20px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.38);pointer-events:auto}
 .driver-request.hidden{display:none!important}
 @media(max-width:700px){main{padding:10px}.driver-home{height:calc(100vh - 105px);min-height:560px;border-radius:18px}.driver-orb{width:132px;height:132px}.driver-bottom{grid-template-columns:1fr 1fr 1fr;gap:7px}.driver-bottom-card{padding:10px 8px;text-align:center}.driver-bottom-card b{font-size:13px}.driver-bottom-card span{font-size:10px}}
+
+.passenger-home{position:relative;height:calc(100vh - 170px);min-height:620px;border-radius:24px;overflow:hidden;background:#0b1727;border:1px solid #1d3b5d;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.passenger-home #tripMap{position:absolute;inset:0;height:100%!important;border-radius:0!important}
+.passenger-overlay{position:absolute;inset:0;z-index:500;pointer-events:none}
+.passenger-topbar{display:flex;justify-content:space-between;gap:10px;padding:16px;pointer-events:auto}
+.passenger-pill,.passenger-destination,.passenger-bottom,.passenger-trip-status{background:rgba(7,20,38,.91);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);box-shadow:0 10px 30px rgba(0,0,0,.24)}
+.passenger-pill{border-radius:999px;padding:10px 14px;font-weight:800}.passenger-destination{position:absolute;left:16px;right:16px;top:72px;padding:14px 16px;border-radius:18px;pointer-events:auto}
+.passenger-destination label{display:block;color:#9fb3ca;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px}.passenger-destination input{margin:5px 0 0;background:transparent;border:0;padding:4px 0;font-size:17px;font-weight:700}
+.passenger-destination input:focus{outline:none}.passenger-vehicle-row{display:flex;gap:8px;overflow:auto;margin-top:10px}.passenger-vehicle{min-width:104px;padding:9px 10px;border:1px solid #315070;border-radius:13px;background:rgba(13,34,57,.9);cursor:pointer}.passenger-vehicle.active{border-color:#27a7ff;background:#123653}.passenger-vehicle b{font-size:13px}.passenger-vehicle span{display:block;color:#a9bad0;font-size:10px;margin-top:2px}
+.passenger-center{position:absolute;left:50%;bottom:145px;transform:translateX(-50%);pointer-events:auto;text-align:center}.passenger-locate{width:54px;height:54px;border-radius:50%;background:rgba(7,20,38,.94);border:1px solid rgba(255,255,255,.2);font-size:22px;margin:0;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.passenger-bottom{position:absolute;left:16px;right:16px;bottom:16px;border-radius:20px;padding:12px;pointer-events:auto}.passenger-bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.passenger-bottom select,.passenger-bottom input{margin:0;background:#091a2e}.passenger-request-btn{width:100%;margin:10px 0 0;border-radius:15px;padding:15px;font-size:16px}
+.passenger-trip-status{position:absolute;left:16px;right:16px;bottom:170px;border-radius:18px;padding:14px;pointer-events:auto}.passenger-trip-status.hidden{display:none!important}
+@media(max-width:700px){.passenger-home{height:calc(100vh - 105px);min-height:560px;border-radius:18px}.passenger-destination{top:65px}.passenger-center{bottom:185px}.passenger-bottom{bottom:10px;left:10px;right:10px}.passenger-topbar{padding:10px}}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script></head>
 <body>
@@ -82,31 +96,43 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 </div>
 
 <section id="passenger" class="hidden">
-<div class="card">
-<h2>🚕 Pedir un viaje</h2>
-<label>¿A dónde vas?</label><input id="destination" placeholder="Destino">
-<label>¿Dónde estás?</label><input id="originAddress" placeholder="Origen (opcional si permites ubicación)">
-<div class="grid">
-<div class="vehicle" onclick="chooseVehicle('HOLYN',this)"><b>HOLYN</b><br><span class="muted">Viaje estándar</span></div>
-<div class="vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>HOLYN Plus</b><br><span class="muted">Más comodidad</span></div>
-<div class="vehicle" onclick="chooseVehicle('HOLYN Moto',this)"><b>HOLYN Moto</b><br><span class="muted">Moto</span></div>
-<div class="vehicle" onclick="chooseVehicle('Paquetería',this)"><b>📦 Paquetería</b><br><span class="muted">Entrega</span></div>
+<div class="passenger-home">
+  <div id="tripMap"></div>
+  <div class="passenger-overlay">
+    <div class="passenger-topbar">
+      <div class="passenger-pill">📍 <span>MI UBICACIÓN</span></div>
+      <div class="passenger-pill">🚕 <span>HOLYN</span></div>
+    </div>
+    <div class="passenger-destination">
+      <label>¿A dónde vas?</label>
+      <input id="destination" placeholder="Escribe tu destino">
+      <div class="passenger-vehicle-row">
+        <div class="passenger-vehicle active" onclick="chooseVehicle('HOLYN',this)"><b>🚕 HOLYN</b><span>Estándar</span></div>
+        <div class="passenger-vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>✨ Plus</b><span>Más comodidad</span></div>
+        <div class="passenger-vehicle" onclick="chooseVehicle('HOLYN Moto',this)"><b>🏍️ Moto</b><span>Ágil</span></div>
+        <div class="passenger-vehicle" onclick="chooseVehicle('Paquetería',this)"><b>📦 Envío</b><span>Paquetería</span></div>
+      </div>
+    </div>
+    <div class="passenger-center">
+      <button class="passenger-locate" onclick="centerPassengerLocation()" title="Centrar mi ubicación">◎</button>
+    </div>
+    <div id="passengerTripStatus" class="passenger-trip-status hidden"></div>
+    <div class="passenger-bottom">
+      <div class="passenger-bottom-grid">
+        <input id="originAddress" placeholder="Origen manual (opcional)">
+        <input id="fare" type="number" value="30000" placeholder="Precio estimado">
+        <select id="payment" onchange="toggleTransferBox()"><option value="bank_transfer">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
+        <div id="passengerPaymentLabel" class="passenger-pill" style="margin:0;text-align:center;padding:11px 8px">Pago directo al conductor</div>
+      </div>
+      <button class="passenger-request-btn" onclick="requestTrip()">🚕 SOLICITAR VIAJE</button>
+      <div id="passengerMsg" class="msg hidden"></div>
+      <div id="transferBox" class="msg" style="margin:8px 0 0"><b>🏦 Transferencia</b><br><span class="muted">El pago se realiza directamente al conductor al finalizar.</span></div>
+    </div>
+  </div>
 </div>
-<label>Método de pago</label><select id="payment" onchange="toggleTransferBox()"><option value="bank_transfer">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
-<div id="transferBox" class="msg">
-<b>🏦 Pago por transferencia</b>
-<p class="muted">El pago se realiza directamente al conductor al finalizar el viaje. HOLYN no recibe el dinero del viaje.</p>
-</div>
-<label>Precio estimado (Gs.)</label><input id="fare" type="number" value="30000">
-<button onclick="requestTrip()">Solicitar</button>
-<div id="passengerMsg" class="msg hidden"></div></div>
-<div class="card"><h2>🗺️ Seguimiento del viaje</h2><div id="tripMap" style="height:300px;border-radius:16px;overflow:hidden"></div><div id="tripTrackingMsg" class="msg hidden"></div></div><div class="card"><h2>Mis viajes</h2><div id="myTrips"></div><div id="ratingBox" class="msg hidden"></div></div>
+<div class="card hidden"><h2>Mis viajes</h2><div id="myTrips"></div><div id="ratingBox" class="msg hidden"></div></div>
 <div id="transferPaymentCard" class="card hidden"><h2>🏦 Pago de este viaje</h2><div id="transferPaymentInfo"></div></div>
-<div class="card">
-<h2>🚗 ¿Quieres conducir con HOLYN?</h2>
-<p class="muted">Puedes enviar tu solicitud de conductor sin crear otra cuenta.</p>
-<button onclick="openDriverApplication()">Quiero ser conductor</button>
-</div>
+<div class="card hidden"><h2>🚗 ¿Quieres conducir con HOLYN?</h2><button onclick="openDriverApplication()">Quiero ser conductor</button></div>
 </section>
 
 <div id="driverRegistration" class="card hidden">
@@ -404,6 +430,8 @@ function initTripMap(lat,lng){const el=document.getElementById('tripMap');if(!el
 function updateDriverMarker(lat,lng){if(!tripMap)return;if(driverMarker)driverMarker.setLatLng([lat,lng]);else driverMarker=L.marker([lat,lng]).addTo(tripMap).bindPopup('Conductor HOLYN')}
 function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.geolocation)return;passengerLocationWatch=navigator.geolocation.watchPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};if(passengerMarker)passengerMarker.setLatLng([p.coords.latitude,p.coords.longitude])},()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:15000})}
 function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
+function centerPassengerLocation(){if(passengerLocation&&tripMap){tripMap.setView([passengerLocation.lat,passengerLocation.lng],16);return}if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};initTripMap(p.coords.latitude,p.coords.longitude);startPassengerLocation()},()=>msg('passengerMsg','⚠️ Activa la ubicación para centrar el mapa.'))}}
+function initPassengerHome(){if(passengerLocation){initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation();return}if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};initTripMap(p.coords.latitude,p.coords.longitude);startPassengerLocation()},()=>{if(typeof L!=='undefined')initTripMap(-25.2637,-57.5759)})}else if(typeof L!=='undefined')initTripMap(-25.2637,-57.5759)}
 async function loadPassenger(){
  const {data}=await sb.from('trips').select('*').eq('passenger_id',profile.id).order('requested_at',{ascending:false}).limit(20);
  document.getElementById('myTrips').innerHTML=(data||[]).map(t=>'<div class="card"><b>'+escapeHtml(t.vehicle_type)+'</b> → '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b>'+(t.driver_id?'<br>🚗 Conductor asignado':'')+(t.status==='completed'?'<br>🏁 Viaje finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+(t.cancellation_reason?'<br>⚠️ '+escapeHtml(t.cancellation_reason):'')+cancelTripButton(t)+ratingButtons(t)+'</div>').join('')||'<span class="muted">Todavía no tienes viajes.</span>';
