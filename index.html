@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HOLYN — Conectada</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+// Refuerzo de interacción del botón CONECTAR/DESCONECTAR.
+document.addEventListener('DOMContentLoaded',()=>{
+ const onlineBtn=document.getElementById('onlineBtn');
+ if(onlineBtn){
+  onlineBtn.type='button';
+  onlineBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggleOnline();});
+ }
+});
+</script>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#071426;color:#fff}
 header{padding:18px 22px;background:#0b1d35;display:flex;justify-content:space-between;align-items:center}
