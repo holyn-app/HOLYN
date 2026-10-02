@@ -357,55 +357,58 @@ function toggleTransferBox(){
  document.getElementById('transferBox')?.classList.toggle('hidden',payment!=='bank_transfer');
 }
 async function requestTrip(){
- const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
+ const destination=document.getElementById('destination').value.trim();
+ const payment=document.getElementById('payment').value;
  const isPackage=vehicle==='Paquetería';
  const packageDescription=document.getElementById('packageDescription')?.value.trim()||'';
  const packageQuantity=Math.max(1,Number(document.getElementById('packageQuantity')?.value||1));
- if(!destination||fare<=0){msg('passengerMsg','Completa destino y precio.');return}
- if(isPackage&&!packageDescription){msg('passengerMsg','📦 Indica qué contiene el paquete antes de solicitar.');return}
- msg('passengerMsg',isPackage?'📦 Preparando tu envío...':'📍 Preparando tu viaje...');
- let origin=await getCurrentPosition();
- if(!origin){
-   const originText=document.getElementById('originAddress')?.value.trim();
-   if(originText) origin=await geocodeDestination(originText);
- }
- const originText=document.getElementById('originAddress')?.value.trim()||'Ubicación actual';
- if(!origin){msg('passengerMsg','⚠️ No pudimos obtener tu ubicación. Activa la ubicación o escribe tu punto de partida.');return}
- const dest=await geocodeDestination(destination);
- if(!dest){msg('passengerMsg','No pudimos encontrar ese destino. Prueba con una dirección o lugar más específico.');return}
+ if(!destination||!selectedDestination){msg('passengerMsg','Busca y confirma el destino en el mapa.');return}
+ if(isPackage&&!packageDescription){msg('passengerMsg','📦 Indica qué contiene el paquete.');return}
+ const origin=await getCurrentPosition()||(document.getElementById('originAddress')?.value.trim()?await geocodeDestination(document.getElementById('originAddress').value.trim()):null);
+ if(!origin){msg('passengerMsg','⚠️ Activa la ubicación o indica un origen.');return}
+ const route=await getDrivingRoute(origin,selectedDestination);
+ if(!route){msg('passengerMsg','No pudimos calcular la ruta.');return}
+ const fare=calculateHolynFare(route.distance/1000,route.duration/60,vehicle);
+ document.getElementById('fare').textContent='Gs. '+fare.toLocaleString();
  passengerLocation=origin;
- const {data:settings}=await sb.from('app_settings').select('*').eq('id',1).maybeSingle();
- const cfg=settings||{};
- const launchStart=new Date('2026-09-18T00:00:00-03:00');
- const futureDate=new Date(launchStart); futureDate.setMonth(futureDate.getMonth()+3);
- const now=new Date();
- const configuredRate=Number(cfg.commission_rate??0);
- const rate=now<futureDate?0:Math.max(0,Math.min(100,configuredRate||15));
+ initTripMap(origin.lat,origin.lng);
+ setPassengerDestinationMarker(selectedDestination);
+ await drawRoute(origin,selectedDestination);
+ const settingsResult=await sb.from('app_settings').select('commission_rate').eq('id',1).maybeSingle();
+ const rate=new Date() < new Date('2026-12-18T00:00:00-03:00') ? 0 : Math.max(0,Math.min(100,Number(settingsResult.data?.commission_rate??15)));
  const holynCommission=Math.round(fare*rate/100);
  const driverAmount=Math.max(0,fare-holynCommission);
- const {data:trip,error}=await sb.from('trips').insert({
-   passenger_id:profile.id,origin_text:originText,origin_lat:origin.lat,origin_lng:origin.lng,
-   destination_text:destination,destination_lat:dest.lat,destination_lng:dest.lng,
-   vehicle_type:vehicle,estimated_fare:fare,commission_rate:rate,holyn_commission:holynCommission,
-   driver_amount:driverAmount,payment_method:payment,status:'requested'
- }).select('id').single();
- if(error||!trip){msg('passengerMsg','No se pudo solicitar el viaje. Inténtalo nuevamente.');return}
+ const originText=document.getElementById('originAddress')?.value.trim()||'Ubicación actual';
+ showPassengerSearchingOverlay(destination,origin);
+ const {data:trip,error}=await sb.from('trips').insert({passenger_id:profile.id,origin_text:originText,origin_lat:origin.lat,origin_lng:origin.lng,destination_text:selectedDestination.label||destination,destination_lat:selectedDestination.lat,destination_lng:selectedDestination.lng,vehicle_type:vehicle,estimated_fare:fare,commission_rate:rate,holyn_commission:holynCommission,driver_amount:driverAmount,payment_method:payment,status:'requested'}).select('id').single();
+ if(error||!trip){hidePassengerSearchingOverlay();msg('passengerMsg','No se pudo solicitar el viaje.');return}
  if(isPackage){
-   const {error:deliveryError}=await sb.from('delivery_orders').insert({
-     trip_id:trip.id,passenger_id:profile.id,driver_id:null,
-     pickup_text:originText,delivery_text:destination,
-     pickup_lat:origin.lat,pickup_lng:origin.lng,delivery_lat:dest.lat,delivery_lng:dest.lng,
-     package_description:packageDescription,package_quantity:packageQuantity,
-     estimated_fare:fare,commission_rate:rate,holyn_commission:holynCommission,
-     driver_amount:driverAmount,payment_method:payment,status:'requested'
-   });
-   if(deliveryError){
-     await sb.from('trips').update({status:'cancelled',cancellation_reason:'No se pudo registrar el envío'}).eq('id',trip.id);
-     msg('passengerMsg','No se pudo registrar el envío. Inténtalo nuevamente.');return
-   }
+   const {error:deliveryError}=await sb.from('delivery_orders').insert({trip_id:trip.id,passenger_id:profile.id,driver_id:null,pickup_text:originText,delivery_text:selectedDestination.label||destination,pickup_lat:origin.lat,pickup_lng:origin.lng,delivery_lat:selectedDestination.lat,delivery_lng:selectedDestination.lng,package_description:packageDescription,package_quantity:packageQuantity,estimated_fare:fare,commission_rate:rate,holyn_commission:holynCommission,driver_amount:driverAmount,payment_method:payment,status:'requested'});
+   if(deliveryError){await sb.from('trips').update({status:'cancelled',cancellation_reason:'No se pudo registrar el envío'}).eq('id',trip.id);hidePassengerSearchingOverlay();msg('passengerMsg','No se pudo registrar el envío.');return}
  }
- msg('passengerMsg',isPackage?'📦 Envío solicitado. Buscando conductor...':payment==='bank_transfer'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
+ activePassengerTripId=trip.id;
+ document.getElementById('searchingText').textContent=isPackage?'Buscando conductor para tu envío.':'Buscando un conductor cercano para vos.';
  loadPassenger();
+}
+function showPassengerSearchingOverlay(destination,origin){
+ const o=document.getElementById('passengerSearchingOverlay');if(!o)return;
+ document.getElementById('searchingDestination').textContent='📍 '+(selectedDestination?.label||destination);
+ o.classList.remove('hidden');
+ if(typeof L!=='undefined'){
+  const el=document.getElementById('searchingMap');
+  if(!searchingMap){searchingMap=L.map(el,{zoomControl:false}).setView([origin.lat,origin.lng],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(searchingMap)}
+  setTimeout(()=>searchingMap.invalidateSize(),100);
+ }
+}
+function hidePassengerSearchingOverlay(){document.getElementById('passengerSearchingOverlay')?.classList.add('hidden')}
+async function cancelActiveTripFromOverlay(){
+ if(!activePassengerTripId){hidePassengerSearchingOverlay();return}
+ const {data:t}=await sb.from('trips').select('status').eq('id',activePassengerTripId).eq('passenger_id',profile.id).maybeSingle();
+ if(t&&['requested','accepted'].includes(t.status)){
+  await sb.from('trips').update({status:'cancelled',cancellation_reason:'Cancelado por el pasajero',cancelled_at:new Date().toISOString()}).eq('id',activePassengerTripId).eq('passenger_id',profile.id).in('status',['requested','accepted']);
+  await sb.from('delivery_orders').update({status:'cancelled'}).eq('trip_id',activePassengerTripId).eq('passenger_id',profile.id);
+ }
+ activePassengerTripId=null;hidePassengerSearchingOverlay();loadPassenger();
 }
 async function showTransferInstructions(){
  const card=document.getElementById('transferPaymentCard'), box=document.getElementById('transferPaymentInfo');
