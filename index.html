@@ -393,7 +393,7 @@ async function requestTrip(){
 function showPassengerSearchingOverlay(destination,origin){
  const o=document.getElementById('passengerSearchingOverlay');if(!o)return;
  document.getElementById('searchingDestination').textContent='📍 '+(selectedDestination?.label||destination);
- o.classList.remove('hidden');
+ o.classList.remove('hidden');startPassengerSearchSound();
  if(typeof L!=='undefined'){
   const el=document.getElementById('searchingMap');
   if(!searchingMap){
@@ -408,7 +408,36 @@ function showPassengerSearchingOverlay(destination,origin){
   setTimeout(()=>searchingMap.invalidateSize(),150);
  }
 }
-function hidePassengerSearchingOverlay(){document.getElementById('passengerSearchingOverlay')?.classList.add('hidden')}
+function hidePassengerSearchingOverlay(){stopPassengerSearchSound();document.getElementById('passengerSearchingOverlay')?.classList.add('hidden')}
+async function showPassengerAcceptedOverlay(t){
+ const panel=document.getElementById('passengerAcceptedOverlay');if(!panel)return;
+ const [{data:p},{data:d}]=await Promise.all([sb.from('profiles').select('full_name,rating').eq('id',t.driver_id).maybeSingle(),sb.from('driver_profiles').select('vehicle_model,vehicle_year,plate,vehicle_color,lat,lng').eq('user_id',t.driver_id).maybeSingle()]);
+ const name=p?.full_name||d?.full_name||'Conductor HOLYN', initials=(name.trim()[0]||'H').toUpperCase();
+ document.getElementById('passengerDriverName').textContent=name;
+ document.getElementById('passengerDriverRating').textContent='⭐ '+Number(p?.rating||5).toFixed(1)+' · Conductor';
+ document.getElementById('passengerDriverPhoto').textContent=initials;
+ document.getElementById('passengerDriverPlate').textContent=d?.plate||'---';
+ document.getElementById('passengerVehicleData').textContent=(d?.vehicle_model||'Vehículo HOLYN')+' · '+(d?.vehicle_color||'Color no indicado')+(d?.vehicle_year?' · '+d.vehicle_year:'');
+ document.getElementById('passengerAcceptedDestination').textContent=t.destination_text||'Destino';
+ panel.classList.remove('hidden');
+ if(typeof L!=='undefined'){
+   const el=document.getElementById('passengerAcceptedMap');
+   if(!window.passengerAcceptedMap){window.passengerAcceptedMap=L.map(el,{zoomControl:false,attributionControl:false}).setView([t.origin_lat,t.origin_lng],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(window.passengerAcceptedMap)}
+   else window.passengerAcceptedMap.setView([t.origin_lat,t.origin_lng],14);
+   if(window.passengerPickupMarker)window.passengerPickupMarker.setLatLng([t.origin_lat,t.origin_lng]);else window.passengerPickupMarker=L.marker([t.origin_lat,t.origin_lng]).addTo(window.passengerAcceptedMap).bindPopup('📍 Tu recogida');
+   if(d?.lat&&d?.lng){if(window.passengerDriverMarker)window.passengerDriverMarker.setLatLng([d.lat,d.lng]);else window.passengerDriverMarker=L.marker([d.lat,d.lng],{icon:L.divIcon({className:'holyn-car-marker',html:'🚗',iconSize:[40,40],iconAnchor:[20,20]})}).addTo(window.passengerAcceptedMap).bindPopup('🚗 Tu conductor');const r=await getDrivingRoute({lat:Number(d.lat),lng:Number(d.lng)},{lat:Number(t.origin_lat),lng:Number(t.origin_lng)});if(r){const c=r.geometry.coordinates.map(x=>[x[1],x[0]]);if(window.passengerDriverRoute)window.passengerDriverRoute.setLatLngs(c);else window.passengerDriverRoute=L.polyline(c,{weight:6,color:'#27a7ff'}).addTo(window.passengerAcceptedMap);document.getElementById('passengerDriverEta').textContent=Math.max(1,Math.round(r.duration/60))+' min · '+(r.distance/1000).toFixed(1)+' km hasta vos';window.passengerAcceptedMap.fitBounds(window.passengerDriverRoute.getBounds(),{padding:[35,35]})}}
+   setTimeout(()=>window.passengerAcceptedMap.invalidateSize(),150);
+ }
+}
+async function cancelAcceptedTrip(){
+ const id=activePassengerTripId;if(!id)return;
+ const {data:t}=await sb.from('trips').select('status').eq('id',id).eq('passenger_id',profile.id).maybeSingle();
+ if(t&&['accepted','arriving'].includes(t.status)){
+  const {error}=await sb.from('trips').update({status:'cancelled',cancellation_reason:'Cancelado por el pasajero'}).eq('id',id).eq('passenger_id',profile.id).in('status',['accepted','arriving']);
+  if(!error)await sb.from('delivery_orders').update({status:'cancelled'}).eq('trip_id',id).eq('passenger_id',profile.id);
+ }
+ document.getElementById('passengerAcceptedOverlay')?.classList.add('hidden');activePassengerTripId=null;loadPassenger();
+}
 async function cancelActiveTripFromOverlay(){
  const id=activePassengerTripId;
  activePassengerTripId=null;
@@ -462,6 +491,7 @@ async function loadPassenger(){
    }
  }
  if(active){
+   if(active.status==='accepted'&&active.driver_id)showPassengerAcceptedOverlay(active);
    if(active.origin_lat&&active.origin_lng){passengerLocation={lat:Number(active.origin_lat),lng:Number(active.origin_lng)};initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation()}
    if(active.destination_lat&&active.destination_lng&&tripMap&&passengerLocation)drawRoute(passengerLocation,{lat:Number(active.destination_lat),lng:Number(active.destination_lng)});
    if(active.driver_id){
@@ -472,12 +502,17 @@ async function loadPassenger(){
    }else msg('tripTrackingMsg','Buscando un conductor cercano...');
  }else{stopPassengerLocation();if(passengerLocationChannel){await sb.removeChannel(passengerLocationChannel);passengerLocationChannel=null}}
  if(tripChannel)await sb.removeChannel(tripChannel);
- tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{const t=payload.new;if(t.status==='accepted'){hidePassengerSearchingOverlay();activePassengerTripId=t.id;msg('passengerMsg','🚗 ¡Conductor encontrado!')}else if(t.status==='completed'){hidePassengerSearchingOverlay();activePassengerTripId=null;msg('passengerMsg','✅ Viaje finalizado.')}else if(t.status==='cancelled'){hidePassengerSearchingOverlay();activePassengerTripId=null;msg('passengerMsg','⚠️ Viaje cancelado.')}loadPassenger()}).subscribe();
+ tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{const t=payload.new;if(t.status==='accepted'){hidePassengerSearchingOverlay();activePassengerTripId=t.id;msg('passengerMsg','🚗 ¡Conductor encontrado!');showPassengerAcceptedOverlay(t)}else if(t.status==='completed'){hidePassengerSearchingOverlay();activePassengerTripId=null;msg('passengerMsg','✅ Viaje finalizado.')}else if(t.status==='cancelled'){hidePassengerSearchingOverlay();activePassengerTripId=null;msg('passengerMsg','⚠️ Viaje cancelado.')}loadPassenger()}).subscribe();
 }
 let holynAudioContext=null;
 function ensureHolynAudio(){try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;holynAudioContext=holynAudioContext||new AC();if(holynAudioContext.state==='suspended')holynAudioContext.resume();return holynAudioContext}catch(e){return null}}
 function holynBeep(online){const ac=ensureHolynAudio();if(!ac)return;const now=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(online?620:280,now);o.frequency.exponentialRampToValueAtTime(online?900:180,now+.16);g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(.16,now+.02);g.gain.exponentialRampToValueAtTime(.0001,now+.22);o.connect(g);g.connect(ac.destination);o.start(now);o.stop(now+.24)}
 function holynTripAlert(){const ac=ensureHolynAudio();if(!ac)return;const now=ac.currentTime;[0,.3,.6].forEach((d,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(i===1?880:660,now+d);g.gain.setValueAtTime(.0001,now+d);g.gain.exponentialRampToValueAtTime(.2,now+d+.02);g.gain.exponentialRampToValueAtTime(.0001,now+d+.22);o.connect(g);g.connect(ac.destination);o.start(now+d);o.stop(now+d+.24)})}
+let holynTripAlertTimer=null,passengerSearchAlertTimer=null;
+function startHolynTripAlertLoop(){stopHolynTripAlertLoop();holynTripAlert();holynTripAlertTimer=setInterval(holynTripAlert,3500)}
+function stopHolynTripAlertLoop(){if(holynTripAlertTimer){clearInterval(holynTripAlertTimer);holynTripAlertTimer=null}}
+function startPassengerSearchSound(){stopPassengerSearchSound();holynTripAlert();passengerSearchAlertTimer=setInterval(()=>holynTripAlert(),5000)}
+function stopPassengerSearchSound(){if(passengerSearchAlertTimer){clearInterval(passengerSearchAlertTimer);passengerSearchAlertTimer=null}}
 async function toggleOnline(){
  const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
  if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
@@ -607,14 +642,18 @@ async function loadDriver(){
  const unread=(notices.data||[]).filter(n=>!n.read_at).length,alertBox=document.getElementById('driverMenuAlerts');if(alertBox)alertBox.innerHTML=unread?'<div class="driver-alert">🔔 Tienes '+unread+' notificación'+(unread===1?'':'es')+' de HOLYN.</div>':'';
  if(trips)trips.innerHTML=mineData.map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
+let driverDeclinedTrips=new Set();
 async function showDriverRequest(t){
  const box=document.getElementById('driverRequestCard');if(!box)return;
- let packageInfo='';
- if(t.vehicle_type==='Paquetería'){
-   const {data:d}=await sb.from('delivery_orders').select('package_description,package_quantity,pickup_text,delivery_text').eq('trip_id',t.id).maybeSingle();
-   if(d)packageInfo='<div style="margin-top:10px;padding:10px;border:1px solid #244767;border-radius:12px;background:#0d2138"><b>📦 ENCOMIENDA</b><br><span class="muted">Contenido:</span> '+escapeHtml(d.package_description||'No indicado')+'<br><span class="muted">Cantidad:</span> '+Number(d.package_quantity||1)+'</div>';
- }
- box.innerHTML='<b style="font-size:18px">'+(t.vehicle_type==='Paquetería'?'📦 NUEVO ENVÍO':'🚕 NUEVO VIAJE')+'</b><br><span class="muted">Recogida</span><div style="font-weight:800;margin:4px 0 8px">'+escapeHtml(t.origin_text||'Ubicación del pasajero')+'</div><span class="muted">Destino</span><div style="font-size:20px;font-weight:900;margin:4px 0 12px">'+escapeHtml(t.destination_text||'Destino')+'</div><div class="grid"><div><b>'+escapeHtml(t.vehicle_type||'HOLYN')+'</b><br><span class="muted">Servicio</span></div><div><b>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'</b><br><span class="muted">Valor estimado</span></div></div>'+packageInfo+'<button style="width:100%;margin-top:12px;background:#fff;color:#071426" onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">ACEPTAR '+(t.vehicle_type==='Paquetería'?'ENVÍO':'VIAJE')+'</button>';box.classList.remove('hidden')}
+ if(driverDeclinedTrips.has(t.id)){hideDriverRequest();return}
+ let packageInfo='',routeInfo='<div class="driver-request-metrics"><div class="driver-request-metric"><b>—</b><small>MINUTOS AL PASAJERO</small></div><div class="driver-request-metric"><b>—</b><small>KM AL PASAJERO</small></div></div>';
+ if(t.vehicle_type==='Paquetería'){const {data:d}=await sb.from('delivery_orders').select('package_description,package_quantity').eq('trip_id',t.id).maybeSingle();if(d)packageInfo='<div style="margin-top:10px;padding:10px;border:1px solid #244767;border-radius:12px;background:#0d2138"><b>📦 ENCOMIENDA</b><br><span class="muted">Contenido:</span> '+escapeHtml(d.package_description||'No indicado')+'<br><span class="muted">Cantidad:</span> '+Number(d.package_quantity||1)+'</div>'}
+ const dp=await sb.from('driver_profiles').select('lat,lng').eq('user_id',profile.id).maybeSingle(),current=dp.data?.lat&&dp.data?.lng?{lat:Number(dp.data.lat),lng:Number(dp.data.lng)}:await getCurrentPosition();
+ if(current&&t.origin_lat&&t.origin_lng){const r=await getDrivingRoute(current,{lat:Number(t.origin_lat),lng:Number(t.origin_lng)});if(r)routeInfo='<div class="driver-request-metrics"><div class="driver-request-metric"><b>'+Math.max(1,Math.round(r.duration/60))+' min</b><small>AL PASAJERO</small></div><div class="driver-request-metric"><b>'+(r.distance/1000).toFixed(1)+' km</b><small>HASTA RECOGIDA</small></div></div>'}
+ box.innerHTML='<b style="font-size:18px">'+(t.vehicle_type==='Paquetería'?'📦 NUEVO ENVÍO':'🚕 NUEVO VIAJE')+'</b><br><span class="muted">Recogida</span><div style="font-weight:800;margin:4px 0 8px">'+escapeHtml(t.origin_text||'Ubicación del pasajero')+'</div><span class="muted">Destino</span><div style="font-size:20px;font-weight:900;margin:4px 0 12px">'+escapeHtml(t.destination_text||'Destino')+'</div><div class="grid"><div><b>'+escapeHtml(t.vehicle_type||'HOLYN')+'</b><br><span class="muted">Servicio</span></div><div><b>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'</b><br><span class="muted">Valor estimado</span></div></div>'+routeInfo+packageInfo+'<button style="width:100%;margin-top:12px;background:#fff;color:#071426" onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">ACEPTAR '+(t.vehicle_type==='Paquetería'?'ENVÍO':'VIAJE')+'</button><button class="driver-decline-btn" onclick="declineTripRequest(\''+escapeHtml(t.id)+'\')">NO TOMAR ESTE VIAJE</button>';
+ box.classList.remove('hidden');startHolynTripAlertLoop();
+}
+function declineTripRequest(id){driverDeclinedTrips.add(id);stopHolynTripAlertLoop();hideDriverRequest();msg('driverMsg','Viaje no tomado. Seguirás disponible para otras solicitudes.');setTimeout(()=>loadDriver(),120)}
 function hideDriverRequest(){document.getElementById('driverRequestCard')?.classList.add('hidden');}
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
@@ -692,7 +731,7 @@ async function acceptTrip(id){
  const {data:accepted,error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).eq('status','requested').is('driver_id',null).select('*').maybeSingle();
  if(error||!accepted){msg('driverMsg','Ese viaje ya fue tomado por otro conductor o ya no está disponible.');loadDriver();return}
  if(t.vehicle_type==='Paquetería')await sb.from('delivery_orders').update({driver_id:profile.id,status:'accepted'}).eq('trip_id',id);
- hideDriverRequest();holynBeep(true);await showDriverActiveTrip({...t,...accepted,driver_id:profile.id,status:'accepted'});loadDriver();
+ hideDriverRequest();stopHolynTripAlertLoop();holynBeep(true);await showDriverActiveTrip({...t,...accepted,driver_id:profile.id,status:'accepted'});loadDriver();
 }
 async function showDriverActiveTrip(t){
  const panel=document.getElementById('driverActiveTrip');if(!panel)return;
