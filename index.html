@@ -26,7 +26,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 .passenger-pill,.passenger-destination,.passenger-bottom,.passenger-trip-status{background:rgba(7,20,38,.91);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);box-shadow:0 10px 30px rgba(0,0,0,.24)}
 .passenger-pill{border-radius:999px;padding:10px 14px;font-weight:800}.passenger-destination{position:absolute;left:16px;right:16px;top:72px;padding:14px 16px;border-radius:18px;pointer-events:auto}
 .passenger-destination label{display:block;color:#9fb3ca;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px}.passenger-destination input{margin:5px 0 0;background:transparent;border:0;padding:4px 0;font-size:17px;font-weight:700}
-.passenger-destination input:focus{outline:none}.passenger-vehicle-row{display:flex;gap:8px;overflow:auto;margin-top:10px}.passenger-vehicle{min-width:104px;padding:9px 10px;border:1px solid #315070;border-radius:13px;background:rgba(13,34,57,.9);cursor:pointer}.passenger-vehicle.active{border-color:#27a7ff;background:#123653}.passenger-vehicle b{font-size:13px}.passenger-vehicle span{display:block;color:#a9bad0;font-size:10px;margin-top:2px}
+.passenger-destination input:focus{outline:none}.passenger-vehicle-row{display:flex;gap:8px;overflow:auto;margin-top:10px}.passenger-vehicle{min-width:104px;padding:9px 10px;border:1px solid #315070;border-radius:13px;background:rgba(13,34,57,.9);cursor:pointer}.passenger-vehicle.active{border-color:#27a7ff;background:#123653}.passenger-vehicle b{font-size:13px}.passenger-vehicle span{display:block;color:#a9bad0;font-size:10px;margin-top:2px}.package-fields{margin-top:10px;padding:12px;border:1px solid #244767;border-radius:14px;background:rgba(7,20,38,.78)}.package-fields.hidden{display:none!important}.package-fields label{display:block;color:#9fb3ca;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}.package-fields input{margin:5px 0 8px;background:#071426}
 .passenger-center{position:absolute;left:50%;bottom:145px;transform:translateX(-50%);pointer-events:auto;text-align:center}.passenger-locate{width:54px;height:54px;border-radius:50%;background:rgba(7,20,38,.94);border:1px solid rgba(255,255,255,.2);font-size:22px;margin:0;box-shadow:0 10px 30px rgba(0,0,0,.3)}
 .passenger-bottom{position:absolute;left:16px;right:16px;bottom:16px;border-radius:20px;padding:12px;pointer-events:auto}.passenger-bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.passenger-bottom select,.passenger-bottom input{margin:0;background:#091a2e}.passenger-request-btn{width:100%;margin:10px 0 0;border-radius:15px;padding:15px;font-size:16px}
 .passenger-trip-status{position:absolute;left:16px;right:16px;bottom:170px;border-radius:18px;padding:14px;pointer-events:auto}.passenger-trip-status.hidden{display:none!important}
@@ -87,6 +87,13 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
         <div class="passenger-vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>✨ Plus</b><span>Más comodidad</span></div>
         <div class="passenger-vehicle" onclick="chooseVehicle('HOLYN Moto',this)"><b>🏍️ Moto</b><span>Ágil</span></div>
         <div class="passenger-vehicle" onclick="chooseVehicle('Paquetería',this)"><b>📦 Envío</b><span>Paquetería</span></div>
+      </div>
+      <div id="packageFields" class="package-fields hidden">
+        <div class="grid">
+          <div><label>📦 ¿Qué envías?</label><input id="packageDescription" placeholder="Ej.: documentos, ropa, caja"></div>
+          <div><label>🔢 Cantidad</label><input id="packageQuantity" type="number" min="1" value="1"></div>
+        </div>
+        <div class="muted">El conductor recogerá el paquete en el origen y lo entregará en el destino indicado.</div>
       </div>
     </div>
     <div class="passenger-center">
@@ -180,7 +187,7 @@ let driverDestinationState=null, driverCurrentTrips=[], driverTodayEarnings=0;
 function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[ch]))}
 function safeHttpUrl(v){try{const u=new URL(String(v||''),location.origin);return ['http:','https:'].includes(u.protocol)?u.href:''}catch(e){return ''}}
 function msg(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.remove('hidden')}
-function chooseVehicle(v,el){vehicle=v;document.querySelectorAll('.vehicle,.passenger-vehicle').forEach(x=>x.classList.remove('active'));el.classList.add('active')}
+function chooseVehicle(v,el){vehicle=v;document.querySelectorAll('.vehicle,.passenger-vehicle').forEach(x=>x.classList.remove('active'));el.classList.add('active');const fields=document.getElementById('packageFields');if(fields)fields.classList.toggle('hidden',v!=='Paquetería')}
 async function signup(){
  const email=emailEl().value.trim();
  const password=document.getElementById('password').value;
@@ -351,13 +358,18 @@ function toggleTransferBox(){
 }
 async function requestTrip(){
  const destination=document.getElementById('destination').value.trim(), fare=Number(document.getElementById('fare').value||0), payment=document.getElementById('payment').value;
+ const isPackage=vehicle==='Paquetería';
+ const packageDescription=document.getElementById('packageDescription')?.value.trim()||'';
+ const packageQuantity=Math.max(1,Number(document.getElementById('packageQuantity')?.value||1));
  if(!destination||fare<=0){msg('passengerMsg','Completa destino y precio.');return}
- msg('passengerMsg','📍 Preparando tu viaje...');
+ if(isPackage&&!packageDescription){msg('passengerMsg','📦 Indica qué contiene el paquete antes de solicitar.');return}
+ msg('passengerMsg',isPackage?'📦 Preparando tu envío...':'📍 Preparando tu viaje...');
  let origin=await getCurrentPosition();
  if(!origin){
    const originText=document.getElementById('originAddress')?.value.trim();
    if(originText) origin=await geocodeDestination(originText);
  }
+ const originText=document.getElementById('originAddress')?.value.trim()||'Ubicación actual';
  if(!origin){msg('passengerMsg','⚠️ No pudimos obtener tu ubicación. Activa la ubicación o escribe tu punto de partida.');return}
  const dest=await geocodeDestination(destination);
  if(!dest){msg('passengerMsg','No pudimos encontrar ese destino. Prueba con una dirección o lugar más específico.');return}
@@ -372,13 +384,27 @@ async function requestTrip(){
  const holynCommission=Math.round(fare*rate/100);
  const driverAmount=Math.max(0,fare-holynCommission);
  const {data:trip,error}=await sb.from('trips').insert({
-   passenger_id:profile.id,origin_text:'Ubicación actual',origin_lat:origin.lat,origin_lng:origin.lng,
+   passenger_id:profile.id,origin_text:originText,origin_lat:origin.lat,origin_lng:origin.lng,
    destination_text:destination,destination_lat:dest.lat,destination_lng:dest.lng,
    vehicle_type:vehicle,estimated_fare:fare,commission_rate:rate,holyn_commission:holynCommission,
    driver_amount:driverAmount,payment_method:payment,status:'requested'
  }).select('id').single();
  if(error||!trip){msg('passengerMsg','No se pudo solicitar el viaje. Inténtalo nuevamente.');return}
- msg('passengerMsg',payment==='bank_transfer'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
+ if(isPackage){
+   const {error:deliveryError}=await sb.from('delivery_orders').insert({
+     trip_id:trip.id,passenger_id:profile.id,driver_id:null,
+     pickup_text:originText,delivery_text:destination,
+     pickup_lat:origin.lat,pickup_lng:origin.lng,delivery_lat:dest.lat,delivery_lng:dest.lng,
+     package_description:packageDescription,package_quantity:packageQuantity,
+     estimated_fare:fare,commission_rate:rate,holyn_commission:holynCommission,
+     driver_amount:driverAmount,payment_method:payment,status:'requested'
+   });
+   if(deliveryError){
+     await sb.from('trips').update({status:'cancelled',cancellation_reason:'No se pudo registrar el envío'}).eq('id',trip.id);
+     msg('passengerMsg','No se pudo registrar el envío. Inténtalo nuevamente.');return
+   }
+ }
+ msg('passengerMsg',isPackage?'📦 Envío solicitado. Buscando conductor...':payment==='bank_transfer'?'🏦 Viaje solicitado. Al finalizar, transferí directamente al conductor.':'🚕 Solicitud enviada. Buscando conductor...');
  loadPassenger();
 }
 async function showTransferInstructions(){
@@ -564,7 +590,14 @@ async function loadDriver(){
  const unread=(notices.data||[]).filter(n=>!n.read_at).length,alertBox=document.getElementById('driverMenuAlerts');if(alertBox)alertBox.innerHTML=unread?'<div class="driver-alert">🔔 Tienes '+unread+' notificación'+(unread===1?'':'es')+' de HOLYN.</div>':'';
  if(trips)trips.innerHTML=mineData.map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
-function showDriverRequest(t){const box=document.getElementById('driverRequestCard');if(!box)return;box.innerHTML='<b style="font-size:18px">🚕 NUEVO VIAJE</b><br><span class="muted">Recogida</span><div style="font-weight:800;margin:4px 0 8px">'+escapeHtml(t.origin_text||'Ubicación del pasajero')+'</div><span class="muted">Destino</span><div style="font-size:20px;font-weight:900;margin:4px 0 12px">'+escapeHtml(t.destination_text||'Destino')+'</div><div class="grid"><div><b>'+escapeHtml(t.vehicle_type||'HOLYN')+'</b><br><span class="muted">Servicio</span></div><div><b>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'</b><br><span class="muted">Valor estimado</span></div></div><button style="width:100%;margin-top:12px;background:#fff;color:#071426" onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">ACEPTAR VIAJE</button>';box.classList.remove('hidden')}
+async function showDriverRequest(t){
+ const box=document.getElementById('driverRequestCard');if(!box)return;
+ let packageInfo='';
+ if(t.vehicle_type==='Paquetería'){
+   const {data:d}=await sb.from('delivery_orders').select('package_description,package_quantity,pickup_text,delivery_text').eq('trip_id',t.id).maybeSingle();
+   if(d)packageInfo='<div style="margin-top:10px;padding:10px;border:1px solid #244767;border-radius:12px;background:#0d2138"><b>📦 ENCOMIENDA</b><br><span class="muted">Contenido:</span> '+escapeHtml(d.package_description||'No indicado')+'<br><span class="muted">Cantidad:</span> '+Number(d.package_quantity||1)+'</div>';
+ }
+ box.innerHTML='<b style="font-size:18px">'+(t.vehicle_type==='Paquetería'?'📦 NUEVO ENVÍO':'🚕 NUEVO VIAJE')+'</b><br><span class="muted">Recogida</span><div style="font-weight:800;margin:4px 0 8px">'+escapeHtml(t.origin_text||'Ubicación del pasajero')+'</div><span class="muted">Destino</span><div style="font-size:20px;font-weight:900;margin:4px 0 12px">'+escapeHtml(t.destination_text||'Destino')+'</div><div class="grid"><div><b>'+escapeHtml(t.vehicle_type||'HOLYN')+'</b><br><span class="muted">Servicio</span></div><div><b>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'</b><br><span class="muted">Valor estimado</span></div></div>'+packageInfo+'<button style="width:100%;margin-top:12px;background:#fff;color:#071426" onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">ACEPTAR '+(t.vehicle_type==='Paquetería'?'ENVÍO':'VIAJE')+'</button>';box.classList.remove('hidden')}
 function hideDriverRequest(){document.getElementById('driverRequestCard')?.classList.add('hidden');}
 async function submitDriverRegistration(){
  const year=Number(document.getElementById('drvYear').value);
@@ -644,7 +677,7 @@ async function acceptTrip(id){
   const {data:accepted,error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).eq('status','requested').is('driver_id',null).select('id').maybeSingle();
  if(error||!accepted){msg('driverMsg','Ese viaje ya fue tomado por otro conductor o ya no está disponible.');loadDriver();return}
  if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
- msg('driverMsg','✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
+ if(t.vehicle_type==='Paquetería'){await sb.from('delivery_orders').update({driver_id:profile.id,status:'accepted'}).eq('trip_id',id)} msg('driverMsg',t.vehicle_type==='Paquetería'?'📦 Envío aceptado. El destinatario podrá seguir la entrega.':'✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
 }
 async function rateTrip(tripId,driverId,rating){
  const {data:existing}=await sb.from('ratings').select('id').eq('trip_id',tripId).eq('passenger_id',profile.id).eq('driver_id',driverId).maybeSingle();
@@ -680,6 +713,10 @@ async function updateTripStatus(id,status){
  if(status==='completed')payload.completed_at=new Date().toISOString();
  const {error}=await sb.from('trips').update(payload).eq('id',id).eq('driver_id',profile.id);
  if(error){msg('driverMsg','No se pudo actualizar el viaje.');return}
+ if(status==='arriving'||status==='in_progress'||status==='completed'){
+   const deliveryStatus=status==='arriving'?'arriving':status==='in_progress'?'in_progress':'completed';
+   await sb.from('delivery_orders').update({status:deliveryStatus,...(status==='completed'?{completed_at:new Date().toISOString()}:{})}).eq('trip_id',id).eq('driver_id',profile.id);
+ }
  msg('driverMsg',status==='arriving'?'📍 Marcaste que llegaste.':status==='in_progress'?'🚕 Viaje iniciado.':'🏁 Viaje finalizado.');loadDriver();
 }
 function tripStatusButtons(t){
