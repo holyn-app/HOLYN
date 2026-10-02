@@ -454,23 +454,9 @@ async function loadPassenger(){
  tripChannel=sb.channel('holyn-passenger-'+profile.id).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'passenger_id=eq.'+profile.id},payload=>{const t=payload.new;if(t.status==='accepted'){hidePassengerSearchingOverlay();activePassengerTripId=t.id;msg('passengerMsg','🚗 ¡Conductor encontrado!')}else if(t.status==='completed'){hidePassengerSearchingOverlay();activePassengerTripId=null;msg('passengerMsg','✅ Viaje finalizado.')}else if(t.status==='cancelled'){hidePassengerSearchingOverlay();activePassengerTripId=null;msg('passengerMsg','⚠️ Viaje cancelado.')}loadPassenger()}).subscribe();
 }
 let holynAudioContext=null;
-function holynBeep(online){
- try{
-  const AC=window.AudioContext||window.webkitAudioContext;
-  if(!AC)return;
-  holynAudioContext=holynAudioContext||new AC();
-  if(holynAudioContext.state==='suspended')holynAudioContext.resume();
-  const now=holynAudioContext.currentTime;
-  const osc=holynAudioContext.createOscillator(),gain=holynAudioContext.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(online?620:280,now);
-  osc.frequency.exponentialRampToValueAtTime(online?900:180,now+0.16);
-  gain.gain.setValueAtTime(0.0001,now);
-  gain.gain.exponentialRampToValueAtTime(0.16,now+0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001,now+0.22);
-  osc.connect(gain);gain.connect(holynAudioContext.destination);osc.start(now);osc.stop(now+0.24);
- }catch(e){}
-}
+function ensureHolynAudio(){try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;holynAudioContext=holynAudioContext||new AC();if(holynAudioContext.state==='suspended')holynAudioContext.resume();return holynAudioContext}catch(e){return null}}
+function holynBeep(online){const ac=ensureHolynAudio();if(!ac)return;const now=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(online?620:280,now);o.frequency.exponentialRampToValueAtTime(online?900:180,now+.16);g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(.16,now+.02);g.gain.exponentialRampToValueAtTime(.0001,now+.22);o.connect(g);g.connect(ac.destination);o.start(now);o.stop(now+.24)}
+function holynTripAlert(){const ac=ensureHolynAudio();if(!ac)return;const now=ac.currentTime;[0,.3,.6].forEach((d,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(i===1?880:660,now+d);g.gain.setValueAtTime(.0001,now+d);g.gain.exponentialRampToValueAtTime(.2,now+d+.02);g.gain.exponentialRampToValueAtTime(.0001,now+d+.22);o.connect(g);g.connect(ac.destination);o.start(now+d);o.stop(now+d+.24)})}
 async function toggleOnline(){
  const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
  if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
@@ -590,7 +576,7 @@ async function loadDriver(){
  const {data:dp,error:dpError}=await sb.from('driver_profiles').select('*').eq('user_id',profile.id).maybeSingle();if(seq!==driverLoadSeq)return;if(dpError||!dp){if(status)status.textContent='⚠️ No se pudo consultar el perfil de conductor.';return}
  const approved=dp.is_approved===true,canOperate=approved&&dp.account_status!=='suspended';if(status)status.textContent=dp.account_status==='suspended'?'🔒 Cuenta suspendida por comisión pendiente.':approved?'✅ Conductor aprobado.':'🟡 Solicitud pendiente de revisión por HOLYN.';renderDriverHome(dp);
  if(dp.lat&&dp.lng)initDriverMap(Number(dp.lat),Number(dp.lng));else if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>initDriverMap(p.coords.latitude,p.coords.longitude),()=>initDriverMap(-25.30,-57.58),{enableHighAccuracy:true,maximumAge:10000,timeout:10000});
- if(driverChannel)await sb.removeChannel(driverChannel);driverChannel=sb.channel('holyn-driver-'+profile.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'trips',filter:'status=eq.requested'},payload=>{if(dp?.is_online&&dp?.is_approved){showDriverRequest(payload.new);loadDriver();}}).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'driver_id=eq.'+profile.id},payload=>{msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');loadDriver();}).subscribe();
+ if(driverChannel)await sb.removeChannel(driverChannel);driverChannel=sb.channel('holyn-driver-'+profile.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'trips',filter:'status=eq.requested'},payload=>{if(dp?.is_online&&dp?.is_approved){holynTripAlert();showDriverRequest(payload.new);loadDriver();}}).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'driver_id=eq.'+profile.id},payload=>{msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');if(payload.new.status==='accepted')showDriverActiveTrip(payload.new);loadDriver();}).subscribe();
  let req=[],reqError=null;const rpc=await sb.rpc('get_available_trips_for_driver');if(seq!==driverLoadSeq)return;req=rpc.data||[];reqError=rpc.error||null;
  if((reqError||req.length===0)&&canOperate){const fb=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);if(seq!==driverLoadSeq)return;if(!fb.error)req=fb.data||[];else reqError=fb.error}
  if(driverDestinationState?.lat&&driverDestinationState?.lng&&canOperate)req=filterTripsTowardDestination(req,dp);driverCurrentTrips=req;if(canOperate&&req.length)showDriverRequest(req[0]);else hideDriverRequest();
@@ -679,16 +665,37 @@ async function showCommissionPayment(){
 }
 
 async function acceptTrip(id){
- const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
- if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
+ const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
  if(Number(overdueCall.data||0)>0){msg('driverMsg','🔒 No puedes aceptar viajes porque tienes una comisión vencida.');loadDriver();return}
- const {data:t,error:tError}=await sb.from('trips').select('payment_method,status,driver_id').eq('id',id).maybeSingle();
- if(tError||!t){msg('driverMsg','No pudimos comprobar el viaje.');return}
-  const {data:accepted,error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).eq('status','requested').is('driver_id',null).select('id').maybeSingle();
+ const {data:t,error:tError}=await sb.from('trips').select('*').eq('id',id).maybeSingle();if(tError||!t){msg('driverMsg','No pudimos comprobar el viaje.');return}
+ const {data:accepted,error}=await sb.from('trips').update({driver_id:profile.id,status:'accepted',accepted_at:new Date().toISOString()}).eq('id',id).eq('status','requested').is('driver_id',null).select('*').maybeSingle();
  if(error||!accepted){msg('driverMsg','Ese viaje ya fue tomado por otro conductor o ya no está disponible.');loadDriver();return}
- if(error){msg('driverMsg','No se pudo aceptar: '+error.message);return}
- if(t.vehicle_type==='Paquetería'){await sb.from('delivery_orders').update({driver_id:profile.id,status:'accepted'}).eq('trip_id',id)} msg('driverMsg',t.vehicle_type==='Paquetería'?'📦 Envío aceptado. El destinatario podrá seguir la entrega.':'✅ Viaje aceptado. El pasajero podrá ver tu ubicación.');loadDriver();
+ if(t.vehicle_type==='Paquetería')await sb.from('delivery_orders').update({driver_id:profile.id,status:'accepted'}).eq('trip_id',id);
+ hideDriverRequest();holynBeep(true);await showDriverActiveTrip({...t,...accepted,driver_id:profile.id,status:'accepted'});loadDriver();
 }
+async function showDriverActiveTrip(t){
+ const panel=document.getElementById('driverActiveTrip');if(!panel)return;
+ const p=await sb.from('profiles').select('full_name,rating').eq('id',t.passenger_id).maybeSingle();
+ const name=p.data?.full_name||'Pasajero HOLYN';
+ document.getElementById('driverPassengerName').textContent=name;
+ document.getElementById('driverPassengerRating').textContent='⭐ '+Number(p.data?.rating||5).toFixed(1)+' · Pasajero';
+ document.getElementById('driverPassengerAvatar').textContent=(name.trim()[0]||'H').toUpperCase();
+ document.getElementById('driverActivePrice').textContent='Gs. '+Number(t.estimated_fare||0).toLocaleString();
+ document.getElementById('driverPickupText').textContent=t.origin_text||'Ubicación del pasajero';
+ document.getElementById('driverDestinationText').textContent=t.destination_text||'Destino';
+ document.getElementById('driverActiveActions').innerHTML=tripStatusButtons(t);
+ panel.classList.remove('hidden');
+ if(typeof L!=='undefined'&&t.origin_lat&&t.origin_lng){
+  const el=document.getElementById('driverTripMap');
+  if(!window.driverTripMap){window.driverTripMap=L.map(el,{zoomControl:false}).setView([t.origin_lat,t.origin_lng],14);window.driverTripTile=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(window.driverTripMap)}
+  else window.driverTripMap.setView([t.origin_lat,t.origin_lng],14);
+  if(window.driverPassengerMarker)window.driverPassengerMarker.setLatLng([t.origin_lat,t.origin_lng]);else window.driverPassengerMarker=L.marker([t.origin_lat,t.origin_lng]).addTo(window.driverTripMap).bindPopup('📍 Pasajero').openPopup();
+  const current=await getCurrentPosition();
+  if(current){const r=await getDrivingRoute(current,{lat:Number(t.origin_lat),lng:Number(t.origin_lng)});if(r){const c=r.geometry.coordinates.map(x=>[x[1],x[0]]);if(window.driverRouteLine)window.driverRouteLine.setLatLngs(c);else window.driverRouteLine=L.polyline(c,{weight:6,color:'#27a7ff'}).addTo(window.driverTripMap);window.driverTripMap.fitBounds(window.driverRouteLine.getBounds(),{padding:[30,30]})}}
+  setTimeout(()=>window.driverTripMap.invalidateSize(),100);
+ }
+}
+function closeDriverActiveTrip(){document.getElementById('driverActiveTrip')?.classList.add('hidden')}
 async function rateTrip(tripId,driverId,rating){
  const {data:existing}=await sb.from('ratings').select('id').eq('trip_id',tripId).eq('passenger_id',profile.id).eq('driver_id',driverId).maybeSingle();
  if(existing){msg('ratingBox','⭐ Ya calificaste este viaje.');return}
