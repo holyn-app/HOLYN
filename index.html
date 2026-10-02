@@ -411,13 +411,14 @@ function showPassengerSearchingOverlay(destination,origin){
 function hidePassengerSearchingOverlay(){stopPassengerSearchSound();document.getElementById('passengerSearchingOverlay')?.classList.add('hidden')}
 async function showPassengerAcceptedOverlay(t){
  const panel=document.getElementById('passengerAcceptedOverlay');if(!panel)return;
- const [{data:p},{data:d}]=await Promise.all([sb.from('profiles').select('full_name,rating').eq('id',t.driver_id).maybeSingle(),sb.from('driver_profiles').select('vehicle_model,vehicle_year,plate,vehicle_color,lat,lng').eq('user_id',t.driver_id).maybeSingle()]);
- const name=p?.full_name||d?.full_name||'Conductor HOLYN', initials=(name.trim()[0]||'H').toUpperCase();
+ const pub=await sb.functions.invoke('get-driver-public-trip-profile',{body:{trip_id:t.id,driver_id:t.driver_id}});
+ const p=pub.data?.profile||{},d=pub.data?.driver||{},photo=pub.data?.photo_url||null;
+ const name=p.full_name||'Conductor HOLYN', initials=(name.trim()[0]||'H').toUpperCase();
  document.getElementById('passengerDriverName').textContent=name;
- document.getElementById('passengerDriverRating').textContent='⭐ '+Number(p?.rating||5).toFixed(1)+' · Conductor';
- document.getElementById('passengerDriverPhoto').textContent=initials;
- document.getElementById('passengerDriverPlate').textContent=d?.plate||'---';
- document.getElementById('passengerVehicleData').textContent=(d?.vehicle_model||'Vehículo HOLYN')+' · '+(d?.vehicle_color||'Color no indicado')+(d?.vehicle_year?' · '+d.vehicle_year:'');
+ document.getElementById('passengerDriverRating').textContent='⭐ '+Number(p.rating||5).toFixed(1)+' · Conductor';
+ const photoEl=document.getElementById('passengerDriverPhoto');photoEl.innerHTML=photo?'<img src="'+escapeHtml(photo)+'" alt="Foto del conductor">':initials;
+ document.getElementById('passengerDriverPlate').textContent=d.plate||'---';
+ document.getElementById('passengerVehicleData').textContent=(d.vehicle_model||'Vehículo HOLYN')+' · '+(d.vehicle_color||'Color no indicado')+(d.vehicle_year?' · '+d.vehicle_year:'');
  document.getElementById('passengerAcceptedDestination').textContent=t.destination_text||'Destino';
  panel.classList.remove('hidden');
  if(typeof L!=='undefined'){
