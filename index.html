@@ -697,6 +697,7 @@ async function cancelTrip(id){
  const reason=prompt('Motivo de cancelación (opcional):')||'Cancelado por el pasajero';
  const {error}=await sb.from('trips').update({status:'cancelled',cancellation_reason:reason,cancelled_at:new Date().toISOString()}).eq('id',id).eq('passenger_id',profile.id).in('status',['requested','accepted']);
  if(error){msg('passengerMsg','No se pudo cancelar el viaje.');return}
+ await sb.from('delivery_orders').update({status:'cancelled'}).eq('trip_id',id).eq('passenger_id',profile.id);
  msg('passengerMsg','⚠️ Viaje cancelado.');loadPassenger();
 }
 function ratingButtons(t){
