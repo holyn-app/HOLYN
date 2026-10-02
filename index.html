@@ -461,7 +461,7 @@ function holynBeep(online){
   osc.connect(gain);gain.connect(holynAudioContext.destination);osc.start(now);osc.stop(now+0.24);
  }catch(e){}
 }
-async function toggleOnline(){
+async async function toggleOnline(){
  const overdueCall=await sb.rpc('enforce_driver_commission_debt',{p_driver_id:profile.id});
  if(overdueCall.error){msg('driverMsg','No pudimos comprobar tu comisión.');return}
  if(Number(overdueCall.data||0)>0){msg('driverMsg','🔒 Cuenta suspendida por comisión HOLYN vencida. Paga la deuda para reactivarla.');loadDriver();return}
@@ -590,7 +590,7 @@ async function loadDriver(){
  const unread=(notices.data||[]).filter(n=>!n.read_at).length,alertBox=document.getElementById('driverMenuAlerts');if(alertBox)alertBox.innerHTML=unread?'<div class="driver-alert">🔔 Tienes '+unread+' notificación'+(unread===1?'':'es')+' de HOLYN.</div>':'';
  if(trips)trips.innerHTML=mineData.map(t=>'<div class="card"><b>'+escapeHtml(t.destination_text)+'</b> · Gs. '+Number(t.final_fare??t.estimated_fare??0).toLocaleString()+' · '+(t.payment_method==='bank_transfer'?'🏦 Transferencia al conductor':'💵 Efectivo')+' · <b>'+escapeHtml(t.status)+'</b><br>'+(t.status==='completed'?'🏁 Finalizado · '+new Date(t.completed_at||t.requested_at).toLocaleString():'')+tripStatusButtons(t)+'</div>').join('')||'<span class="muted">Sin viajes asignados.</span>';
 }
-async function showDriverRequest(t){
+async async function showDriverRequest(t){
  const box=document.getElementById('driverRequestCard');if(!box)return;
  let packageInfo='';
  if(t.vehicle_type==='Paquetería'){
