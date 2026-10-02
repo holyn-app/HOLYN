@@ -145,7 +145,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 <label>🚘 Cédula del vehículo — dorso</label><input id="docVehicleBack" type="file" accept="image/*">
 <button id="uploadDocumentsButton" onclick="uploadDriverDocuments()" disabled>Completa primero el registro para enviar los documentos</button>
 <div id="documentsMsg" class="msg hidden"></div>
-</div><section id="driver" class="hidden">
+</div><div id="passengerSearchingOverlay" class="trip-search-overlay hidden"><div id="searchingMap" class="trip-search-map"></div><div class="trip-search-shade"></div><div class="trip-search-content"><div class="holyn-search-orbit"><b>HOLYN</b></div><h2>BUSCANDO VIAJE</h2><p id="searchingText">Estamos buscando un conductor cercano para vos.</p><div id="searchingDestination" class="searching-destination"></div><button type="button" class="search-cancel-btn" onclick="cancelActiveTripFromOverlay()">Cancelar viaje</button></div></div></section><section id="driver" class="hidden">
 <div id="driverHome" class="driver-home"><div id="driverMap"></div><div class="driver-map-overlay">
 <div class="driver-topbar"><button class="driver-icon-btn" onclick="openDriverMenu()" title="Menú HOLYN">☰</button><div id="driverMoneyPill" class="driver-money-pill hidden" onclick="openDriverEarnings()"><span>Gs. <b id="driverEarnings">0</b></span><small>GANANCIAS DE HOY</small></div><div class="driver-top-actions"><button class="driver-icon-btn" onclick="openDriverDestination()" title="Buscar destino">⌕</button><button class="driver-icon-btn emergency" onclick="openEmergency911()" title="Emergencia 911">△</button></div></div>
 <div id="driverDestinationPill" class="driver-destination-pill hidden"></div>
