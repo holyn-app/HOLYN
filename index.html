@@ -32,6 +32,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 .passenger-trip-status{position:absolute;left:16px;right:16px;bottom:170px;border-radius:18px;padding:14px;pointer-events:auto}.passenger-trip-status.hidden{display:none!important}
 @media(max-width:700px){.passenger-home{height:calc(100vh - 105px);min-height:560px;border-radius:18px}.passenger-destination{top:65px}.passenger-center{bottom:185px}.passenger-bottom{bottom:10px;left:10px;right:10px}.passenger-topbar{padding:10px}}
 
+.destination-suggestions{margin:0 14px 10px;display:flex;flex-direction:column;gap:5px}.destination-suggestion{display:block;width:100%;text-align:left;margin:0;padding:10px 12px;border:1px solid #dce4ea;border-radius:11px;background:#fff;color:#172535;font-size:11px;font-weight:600}.destination-suggestion small{display:block;color:#7b8a99;font-size:9px;margin-top:3px}.gps-status{margin:0 14px 10px;padding:8px 10px;border-radius:10px;background:#eef7fd;color:#49677d;font-size:10px}.gps-status.ok{color:#176b9a}.gps-status.warn{background:#fff6e5;color:#86631d}
 /* HOLYN PASSENGER V2 — app-first redesign */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 :root{--holyn-blue:#159bea;--holyn-navy:#071426;--holyn-panel:rgba(7,20,38,.94)}
@@ -219,7 +220,7 @@ body:has(#passenger:not(.hidden)) #passenger{display:block!important}
     </div>
     <div class="passenger-destination">
       <label>¿A dónde vas?</label>
-      <div class="passenger-destination-search"><input id="destination" placeholder="Escribe tu destino y presiona Buscar" autocomplete="street-address"><button type="button" class="destination-search-btn" onclick="searchPassengerDestination()">Buscar</button></div><div id="destinationResult" class="destination-result hidden"></div><div id="fareAuto" class="fare-auto">El precio se calculará automáticamente con la ruta.</div>
+      <div class="passenger-destination-search"><input id="destination" placeholder="Escribe tu destino y presiona Buscar" autocomplete="street-address"><button type="button" class="destination-search-btn" onclick="searchPassengerDestination()">Buscar</button></div><div id="destinationResult" class="destination-result hidden"></div><div id="destinationSuggestions" class="destination-suggestions hidden"></div><div id="fareAuto" class="fare-auto">El precio se calculará automáticamente con la ruta.</div>
       <div class="passenger-vehicle-row">
         <div class="passenger-vehicle active" onclick="chooseVehicle('HOLYN',this)"><b>🚕 HOLYN</b><span>Estándar</span></div>
         <div class="passenger-vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>✨ Plus</b><span>Más comodidad</span></div>
@@ -240,7 +241,7 @@ body:has(#passenger:not(.hidden)) #passenger{display:block!important}
     <div id="passengerTripStatus" class="passenger-trip-status hidden"></div>
     <div class="passenger-bottom">
       <div class="passenger-bottom-grid">
-        <input id="originAddress" placeholder="Origen manual (opcional)">
+        <div id="gpsStatus" class="gps-status">📍 Obteniendo tu ubicación...</div><input id="originAddress" placeholder="Origen manual (opcional)">
         <div id="fare" class="fare-display">Buscá un destino para calcular el precio</div>
         <select id="payment" onchange="toggleTransferBox()"><option value="bank_transfer">🏦 Transferencia / QR</option><option value="cash">💵 Efectivo</option></select>
         <div id="passengerPaymentLabel" class="passenger-pill" style="margin:0;text-align:center;padding:11px 8px">Pago directo al conductor</div>
@@ -605,20 +606,142 @@ function isRecoverableActiveTrip(t){
  return t.status==='requested'?age<30*60*1000:age<12*60*60*1000;
 }
 function getCurrentPosition(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,maximumAge:10000,timeout:15000})})}
-async function geocodeDestination(q){try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=py&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});const d=await r.json();return d&&d.length?{lat:Number(d[0].lat),lng:Number(d[0].lon),label:d[0].display_name}:null}catch(e){return null}}
-async function getDrivingRoute(o,d){try{const r=await fetch('https://router.project-osrm.org/route/v1/driving/'+o.lng+','+o.lat+';'+d.lng+','+d.lat+'?overview=full&geometries=geojson');const j=await r.json();return j.routes&&j.routes[0]?j.routes[0]:null}catch(e){return null}}
+async async function geocodeDestination(q){
+ const raw=String(q||'').trim();
+ if(!raw)return null;
+ const queries=[raw,raw+', Paraguay'];
+ if(!/asunci[oó]n/i.test(raw)&&!/,/.test(raw))queries.push(raw+', Asunción, Paraguay');
+ const headers={'Accept':'application/json','Accept-Language':'es-PY,es;q=0.9'};
+ for(const query of queries){
+  try{
+   const u='https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=py&dedupe=1&q='+encodeURIComponent(query);
+   const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),7000);
+   const r=await fetch(u,{headers,signal:ctl.signal});clearTimeout(timer);
+   if(!r.ok)continue;
+   const d=await r.json();
+   if(Array.isArray(d)&&d.length){
+    const best=d.find(x=>Number.isFinite(Number(x.lat))&&Number.isFinite(Number(x.lon)))||d[0];
+    return {lat:Number(best.lat),lng:Number(best.lon),label:best.display_name||raw};
+   }
+  }catch(e){}
+ }
+ try{
+  const u='https://photon.komoot.io/api/?limit=8&lang=es&q='+encodeURIComponent(raw+', Paraguay');
+  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),7000);
+  const r=await fetch(u,{headers:{'Accept':'application/json'},signal:ctl.signal});clearTimeout(timer);
+  if(r.ok){
+   const j=await r.json(),features=Array.isArray(j.features)?j.features:[];
+   const py=features.filter(f=>/paraguay|py/i.test((f.properties?.country||'')+' '+(f.properties?.countrycode||'')));
+   const best=(py[0]||features[0]);
+   if(best?.geometry?.coordinates)return {lat:Number(best.geometry.coordinates[1]),lng:Number(best.geometry.coordinates[0]),label:formatGeocodeLabel(best.properties)||raw};
+  }
+ }catch(e){}
+ return null;
+}
+function formatGeocodeLabel(p){
+ if(!p)return '';
+ return [p.name,p.street,p.housenumber,p.district,p.city,p.state,p.country].filter(Boolean).join(', ');
+}
+async function geocodeSuggestions(q){
+ const raw=String(q||'').trim();if(raw.length<3)return[];
+ try{
+  const u='https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=py&dedupe=1&q='+encodeURIComponent(raw+', Paraguay');
+  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),6000);
+  const r=await fetch(u,{headers:{'Accept':'application/json','Accept-Language':'es-PY,es;q=0.9'},signal:ctl.signal});clearTimeout(timer);
+  if(!r.ok)return[];const d=await r.json();
+  return (d||[]).filter(x=>x.lat&&x.lon).map(x=>({lat:Number(x.lat),lng:Number(x.lon),label:x.display_name})).slice(0,5);
+ }catch(e){return[]}
+}
+async function reverseGeocode(lat,lng){
+ try{
+  const u='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lng)+'&zoom=18&addressdetails=1&accept-language=es';
+  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),6000);
+  const r=await fetch(u,{headers:{'Accept':'application/json','Accept-Language':'es-PY,es;q=0.9'},signal:ctl.signal});clearTimeout(timer);
+  if(r.ok){const d=await r.json();return d.display_name||''}
+ }catch(e){}
+ return '';
+}
+async function getDrivingRoute(o,d){
+ const servers=[
+  'https://router.project-osrm.org/route/v1/driving/',
+  'https://routing.openstreetmap.de/routed-car/route/v1/driving/'
+ ];
+ for(const base of servers){
+  try{
+   const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),9000);
+   const r=await fetch(base+o.lng+','+o.lat+';'+d.lng+','+d.lat+'?overview=full&geometries=geojson&steps=false',{signal:ctl.signal});clearTimeout(timer);
+   if(!r.ok)continue;
+   const j=await r.json();
+   if(j.routes&&j.routes[0]&&j.routes[0].distance>0)return j.routes[0];
+  }catch(e){}
+ }
+ return null;
+}
 function setPassengerDestinationMarker(d){if(!tripMap||typeof L==='undefined')return;if(destinationMarker)destinationMarker.setLatLng([d.lat,d.lng]);else destinationMarker=L.marker([d.lat,d.lng]).addTo(tripMap).bindPopup('Destino HOLYN').openPopup()}
 async function drawRoute(o,d){const r=await getDrivingRoute(o,d);if(!r)return null;const c=r.geometry.coordinates.map(x=>[x[1],x[0]]);if(routeLine)routeLine.setLatLngs(c);else routeLine=L.polyline(c,{weight:5,color:'#27a7ff'}).addTo(tripMap);tripMap.fitBounds(routeLine.getBounds(),{padding:[35,35]});return r}
 let selectedDestination=null,activePassengerTripId=null,searchingMap=null,destinationMarker=null;
 function calculateHolynFare(km,min,type){const c={HOLYN:[7000,2500,110],'HOLYN Plus':[9500,3200,140],'HOLYN Moto':[5000,1900,85],Paquetería:[8000,2500,110]}[type]||[7000,2500,110];return Math.max(5000,Math.round((c[0]+km*c[1]+min*c[2])/500)*500)}
-async function searchPassengerDestination(){const q=document.getElementById('destination')?.value.trim();if(!q)return;const b=document.querySelector('.destination-search-btn');if(b){b.disabled=true;b.textContent='Buscando...'}try{const d=await geocodeDestination(q);if(!d){msg('passengerMsg','No encontramos esa dirección en Paraguay.');return}selectedDestination=d;setPassengerDestinationMarker(d);const r=document.getElementById('destinationResult');if(r){r.textContent='📍 '+(d.label||q);r.classList.remove('hidden')}if(passengerLocation){const route=await getDrivingRoute(passengerLocation,d);if(route){document.getElementById('fare').textContent='Gs. '+calculateHolynFare(route.distance/1000,route.duration/60,vehicle).toLocaleString();document.getElementById('fareAuto').textContent='Ruta '+(route.distance/1000).toFixed(1)+' km · '+Math.round(route.duration/60)+' min aprox. · precio automático';await drawRoute(passengerLocation,d)}}}finally{if(b){b.disabled=false;b.textContent='Buscar'}}}
+async function searchPassengerDestination(){
+ const q=document.getElementById('destination')?.value.trim();if(!q)return;
+ const b=document.querySelector('.destination-search-btn');const sug=document.getElementById('destinationSuggestions');
+ if(b){b.disabled=true;b.textContent='Buscando...'}if(sug){sug.classList.add('hidden');sug.innerHTML=''}
+ try{
+  const d=await geocodeDestination(q);
+  if(!d){
+   const options=await geocodeSuggestions(q);
+   if(sug&&options.length){sug.innerHTML=options.map((x,i)=>'<button type="button" class="destination-suggestion" onclick="selectDestinationSuggestion('+i+')">'+escapeHtml(x.label.split(',').slice(0,4).join(', '))+'<small>📍 Paraguay</small></button>').join('');window._holynGeoSuggestions=options;sug.classList.remove('hidden')}
+   msg('passengerMsg','No encontramos esa dirección exacta. Elegí una de las sugerencias o agregá ciudad/barrio.');return;
+  }
+  selectedDestination=d;setPassengerDestinationMarker(d);
+  const r=document.getElementById('destinationResult');if(r){r.textContent='📍 '+(d.label||q);r.classList.remove('hidden')}
+  if(passengerLocation){
+   const route=await getDrivingRoute(passengerLocation,d);
+   if(!route){msg('passengerMsg','Encontramos el destino, pero no pudimos calcular la ruta.');return}
+   const fare=calculateHolynFare(route.distance/1000,route.duration/60,vehicle);
+   const fareEl=document.getElementById('fare');if(fareEl)fareEl.textContent='Gs. '+fare.toLocaleString();
+   const fa=document.getElementById('fareAuto');if(fa)fa.textContent='Ruta '+(route.distance/1000).toFixed(1)+' km · '+Math.max(1,Math.round(route.duration/60))+' min · precio automático';
+   await drawRoute(passengerLocation,d);
+  }else msg('passengerMsg','📍 Esperando tu ubicación para calcular el precio exacto.');
+ }finally{if(b){b.disabled=false;b.textContent='Buscar'}}
+}
+function selectDestinationSuggestion(i){
+ const d=window._holynGeoSuggestions?.[i];if(!d)return;
+ const input=document.getElementById('destination');if(input)input.value=d.label;
+ document.getElementById('destinationSuggestions')?.classList.add('hidden');
+ searchPassengerDestination();
+}
 
 function initTripMap(lat,lng){const el=document.getElementById('tripMap');if(!el||typeof L==='undefined')return;if(!tripMap){tripMap=L.map(el).setView([lat,lng],14);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(tripMap)}else tripMap.setView([lat,lng],14);if(passengerMarker)passengerMarker.setLatLng([lat,lng]);else passengerMarker=L.marker([lat,lng]).addTo(tripMap).bindPopup('Tu ubicación')}
 function updateDriverMarker(lat,lng){if(!tripMap)return;if(driverMarker)driverMarker.setLatLng([lat,lng]);else driverMarker=L.marker([lat,lng]).addTo(tripMap).bindPopup('Conductor HOLYN')}
-function startPassengerLocation(){if(passengerLocationWatch!==null||!navigator.geolocation)return;passengerLocationWatch=navigator.geolocation.watchPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};if(passengerMarker)passengerMarker.setLatLng([p.coords.latitude,p.coords.longitude])},()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:15000})}
+function startPassengerLocation(){
+ if(passengerLocationWatch!==null||!navigator.geolocation)return;
+ passengerLocationWatch=navigator.geolocation.watchPosition(async p=>{
+  passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};
+  if(passengerMarker)passengerMarker.setLatLng([p.coords.latitude,p.coords.longitude]);
+  const status=document.getElementById('gpsStatus');if(status){status.classList.add('ok');status.textContent='📍 Ubicación precisa activa'}
+  if(!document.getElementById('originAddress')?.value){
+   const label=await reverseGeocode(p.coords.latitude,p.coords.longitude);
+   if(label){const origin=document.getElementById('originAddress');if(origin)origin.value=label}
+  }
+ },()=>{const status=document.getElementById('gpsStatus');if(status){status.classList.remove('ok');status.textContent='⚠️ Permite la ubicación para calcular ruta y precio exactos'}},{enableHighAccuracy:true,maximumAge:5000,timeout:12000});
+}
+
 function stopPassengerLocation(){if(passengerLocationWatch!==null){navigator.geolocation.clearWatch(passengerLocationWatch);passengerLocationWatch=null}}
 function centerPassengerLocation(){if(passengerLocation&&tripMap){tripMap.setView([passengerLocation.lat,passengerLocation.lng],16);return}if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};initTripMap(p.coords.latitude,p.coords.longitude);startPassengerLocation()},()=>msg('passengerMsg','⚠️ Activa la ubicación para centrar el mapa.'))}}
-function initPassengerHome(){if(passengerLocation){initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation();return}if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>{passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};initTripMap(p.coords.latitude,p.coords.longitude);startPassengerLocation()},()=>{if(typeof L!=='undefined')initTripMap(-25.2637,-57.5759)})}else if(typeof L!=='undefined')initTripMap(-25.2637,-57.5759)}
+function initPassengerHome(){
+ const status=document.getElementById('gpsStatus');
+ if(status)status.textContent='📍 Obteniendo ubicación precisa...';
+ const onPosition=async p=>{
+  passengerLocation={lat:p.coords.latitude,lng:p.coords.longitude};initTripMap(p.coords.latitude,p.coords.longitude);startPassengerLocation();
+  const label=await reverseGeocode(p.coords.latitude,p.coords.longitude);
+  const origin=document.getElementById('originAddress');if(label&&origin&&!origin.value)origin.value=label;
+  if(status){status.classList.add('ok');status.textContent='📍 Ubicación precisa activa'}
+ };
+ if(passengerLocation){initTripMap(passengerLocation.lat,passengerLocation.lng);startPassengerLocation();return}
+ if(navigator.geolocation)navigator.geolocation.getCurrentPosition(onPosition,()=>{if(status)status.textContent='⚠️ Permite la ubicación para usar GPS y calcular el precio exacto';if(typeof L!=='undefined')initTripMap(-25.2637,-57.5759)},{enableHighAccuracy:true,maximumAge:5000,timeout:12000});
+ else if(typeof L!=='undefined')initTripMap(-25.2637,-57.5759);
+}
+
 async function loadPassenger(){
  hidePassengerSearchingOverlay();
  activePassengerTripId=null;
@@ -702,11 +825,7 @@ async function refreshDriverRequests(){
  box.innerHTML='<span class="muted">Buscando solicitudes de viaje...</span>';
  const rpc=await sb.rpc('get_available_trips_for_driver');
  let req=rpc.data||[], err=rpc.error||null;
- if(!err && req.length===0){
-   const fb=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);
-   if(!fb.error && (fb.data||[]).length)req=fb.data;
-   else if(fb.error)err=fb.error;
- }
+ if(err||!navigator.onLine)req=[];
  if(err){box.innerHTML='<p>⚠️ No pudimos cargar solicitudes: '+escapeHtml(err.message||'error')+'</p>';return}
  box.innerHTML=req.length?req.map(t=>'<div class="card"><b>🚕 SOLICITUD DE VIAJE</b><br>'+escapeHtml(t.vehicle_type)+' · '+escapeHtml(t.destination_text)+'<br>Gs. '+Number(t.estimated_fare||0).toLocaleString()+'<br><button onclick="acceptTrip(\''+escapeHtml(t.id)+'\')">Aceptar viaje</button></div>').join(''):'<span class="muted">No hay solicitudes ahora.</span>';
 }
@@ -778,7 +897,7 @@ async function loadDriver(){
  if(dp.lat&&dp.lng)initDriverMap(Number(dp.lat),Number(dp.lng));else if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>initDriverMap(p.coords.latitude,p.coords.longitude),()=>initDriverMap(-25.30,-57.58),{enableHighAccuracy:true,maximumAge:10000,timeout:10000});
  if(driverChannel)await sb.removeChannel(driverChannel);driverChannel=sb.channel('holyn-driver-'+profile.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'trips',filter:'status=eq.requested'},payload=>{if(dp?.is_online&&dp?.is_approved){holynTripAlert();showDriverRequest(payload.new);loadDriver();}}).on('postgres_changes',{event:'UPDATE',schema:'public',table:'trips',filter:'driver_id=eq.'+profile.id},payload=>{msg('driverMsg',payload.new.status==='accepted'?'🚗 Viaje asignado.':'🔄 Viaje actualizado.');if(payload.new.status==='accepted'){stopHolynTripAlertLoop();showDriverActiveTrip(payload.new)}else if(payload.new.status==='cancelled'){stopHolynTripAlertLoop();hideDriverRequest()}loadDriver();}).subscribe();
  let req=[],reqError=null;const rpc=await sb.rpc('get_available_trips_for_driver');if(seq!==driverLoadSeq)return;req=rpc.data||[];reqError=rpc.error||null;
- if((reqError||req.length===0)&&canOperate){const fb=await sb.from('trips').select('*').eq('status','requested').is('driver_id',null).order('requested_at',{ascending:true}).limit(50);if(seq!==driverLoadSeq)return;if(!fb.error)req=fb.data||[];else reqError=fb.error}
+ if(!canOperate||dp.is_online!==true){req=[];reqError=null}else if(reqError){req=[]}
  if(driverDestinationState?.lat&&driverDestinationState?.lng&&canOperate)req=filterTripsTowardDestination(req,dp);driverCurrentTrips=req;if(canOperate&&req.length)showDriverRequest(req[0]);else hideDriverRequest();
  const [cs,mine,notices]=await Promise.all([sb.rpc('get_driver_commission_summary',{p_driver_id:profile.id}),sb.from('trips').select('*').eq('driver_id',profile.id).order('requested_at',{ascending:false}).limit(50),sb.from('driver_notifications').select('id,title,message,created_at,read_at').eq('driver_id',profile.id).order('created_at',{ascending:false}).limit(10)]);if(seq!==driverLoadSeq)return;
  const cr=cs.data?.[0]||{},total=Number(cr.total_pending||0),overdue=Number(cr.overdue||0);if(commission)commission.innerHTML='<h3>💰 Comisión HOLYN</h3><p><b>Pendiente: Gs. '+total.toLocaleString()+'</b></p>'+(overdue>0?'<p><b>⚠️ Vencido: Gs. '+overdue.toLocaleString()+'</b></p>':'')+(total>0?'<button onclick="showCommissionPayment()">💳 Pagar comisión HOLYN</button>':'<p class="muted">No tienes comisión pendiente.</p>');
