@@ -31,6 +31,144 @@ table{width:100%;border-collapse:collapse}td,th{padding:9px;border-bottom:1px so
 .passenger-bottom{position:absolute;left:16px;right:16px;bottom:16px;border-radius:20px;padding:12px;pointer-events:auto}.passenger-bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.passenger-bottom select,.passenger-bottom input{margin:0;background:#091a2e}.passenger-request-btn{width:100%;margin:10px 0 0;border-radius:15px;padding:15px;font-size:16px}
 .passenger-trip-status{position:absolute;left:16px;right:16px;bottom:170px;border-radius:18px;padding:14px;pointer-events:auto}.passenger-trip-status.hidden{display:none!important}
 @media(max-width:700px){.passenger-home{height:calc(100vh - 105px);min-height:560px;border-radius:18px}.passenger-destination{top:65px}.passenger-center{bottom:185px}.passenger-bottom{bottom:10px;left:10px;right:10px}.passenger-topbar{padding:10px}}
+
+/* HOLYN PASSENGER V2 — app-first redesign */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+:root{--holyn-blue:#159bea;--holyn-navy:#071426;--holyn-panel:rgba(7,20,38,.94)}
+body{font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body:has(#passenger:not(.hidden)){background:#071426}
+body:has(#passenger:not(.hidden)) header{display:none}
+body:has(#passenger:not(.hidden)) main{max-width:none;padding:0}
+body:has(#passenger:not(.hidden)) #app>.card:first-child{display:none}
+body:has(#passenger:not(.hidden)) #ownerModeNav{
+ position:fixed;z-index:7000;top:14px;left:50%;transform:translateX(-50%);
+ width:auto;min-width:390px;margin:0;padding:5px;border-radius:18px;
+ background:rgba(5,16,30,.78);border:1px solid rgba(255,255,255,.13);
+ backdrop-filter:blur(20px);box-shadow:0 12px 40px rgba(0,0,0,.28)
+}
+body:has(#passenger:not(.hidden)) #ownerModeNav>.muted{display:none}
+body:has(#passenger:not(.hidden)) #ownerModeNav .grid{margin:0!important;display:flex;gap:4px}
+body:has(#passenger:not(.hidden)) #ownerModeNav button{
+ margin:0;padding:9px 15px;border-radius:13px;background:transparent;font-size:12px;
+ white-space:nowrap
+}
+body:has(#passenger:not(.hidden)) #ownerModeNav button:first-child{background:var(--holyn-blue)}
+body:has(#passenger:not(.hidden)) #passenger{display:block!important}
+.passenger-home{
+ position:fixed!important;inset:0!important;height:100dvh!important;min-height:0!important;
+ border:0!important;border-radius:0!important;background:#dce5ec!important;box-shadow:none!important
+}
+.passenger-home #tripMap{inset:0!important;border-radius:0!important}
+.passenger-overlay{pointer-events:none}
+.passenger-topbar{padding:18px 20px;pointer-events:none}
+.passenger-pill{
+ padding:10px 14px;border-radius:14px!important;background:rgba(7,20,38,.86)!important;
+ border:1px solid rgba(255,255,255,.16)!important;box-shadow:0 8px 25px rgba(0,0,0,.2)!important;
+ font-size:11px;letter-spacing:.2px;backdrop-filter:blur(18px)
+}
+.passenger-pill:last-child{font-size:14px;font-weight:800}
+.passenger-pill:last-child span{display:none}
+.passenger-pill:last-child:after{content:'HOLYN';font-size:13px}
+.passenger-destination{
+ left:20px!important;right:20px!important;top:76px!important;padding:0!important;
+ border:0!important;border-radius:22px!important;background:rgba(255,255,255,.97)!important;
+ box-shadow:0 14px 38px rgba(4,18,32,.22)!important;color:#0a1726!important;
+ overflow:hidden
+}
+.passenger-destination label{padding:15px 18px 0;color:#667589;font-size:10px;letter-spacing:1px}
+.passenger-destination-search{padding:0 10px 11px 18px}
+.passenger-destination input{
+ color:#091827!important;font-size:16px!important;font-weight:600!important;
+ padding:8px 0!important;margin:0!important
+}
+.passenger-destination input::placeholder{color:#8a98a8}
+.destination-search-btn{
+ background:var(--holyn-blue)!important;border-radius:13px!important;padding:11px 15px!important;
+ font-size:12px!important;margin:0!important
+}
+.destination-result{margin:0 14px 10px!important;border-radius:12px!important}
+.fare-auto{margin:0 14px 12px!important;padding:9px 11px!important;background:#eef7fd!important;color:#466075!important;border:0!important}
+.passenger-vehicle-row{
+ padding:0 14px 14px!important;margin:0!important;gap:7px!important
+}
+.passenger-vehicle{
+ flex:1;min-width:0!important;padding:10px 9px!important;border-radius:14px!important;
+ background:#f4f7fa!important;border:1px solid #dce4eb!important;color:#172535
+}
+.passenger-vehicle.active{
+ background:#e8f5fd!important;border:1.5px solid var(--holyn-blue)!important;
+ box-shadow:0 3px 12px rgba(21,155,234,.12)
+}
+.passenger-vehicle b{font-size:11px!important}
+.passenger-vehicle span{color:#738396!important;font-size:9px!important}
+.passenger-center{right:20px!important;left:auto!important;bottom:214px!important;transform:none!important}
+.passenger-locate{
+ width:48px!important;height:48px!important;background:#fff!important;color:#0a1726!important;
+ border:0!important;box-shadow:0 8px 25px rgba(0,0,0,.2)!important
+}
+.passenger-bottom{
+ left:0!important;right:0!important;bottom:0!important;padding:15px 18px calc(14px + env(safe-area-inset-bottom))!important;
+ border:0!important;border-radius:26px 26px 0 0!important;background:rgba(255,255,255,.98)!important;
+ box-shadow:0 -12px 35px rgba(3,16,30,.18)!important;color:#101e2d
+}
+.passenger-bottom-grid{grid-template-columns:1fr 1fr!important;gap:7px!important}
+.passenger-bottom input,.passenger-bottom select{
+ background:#f3f6f8!important;color:#142334!important;border:1px solid #dce4ea!important;
+ padding:12px!important;border-radius:13px!important
+}
+.passenger-payment-label{display:none}
+#passengerPaymentLabel{background:#f3f6f8!important;color:#526477!important;border:1px solid #dce4ea!important}
+.fare-display{
+ background:#f3f6f8!important;color:#152536!important;border:1px solid #dce4ea!important;
+ border-radius:13px!important;font-size:12px!important;padding:12px 9px!important
+}
+.passenger-request-btn{
+ margin:9px 0 0!important;height:50px!important;border-radius:15px!important;
+ background:#111e2c!important;color:#fff!important;font-size:14px!important;letter-spacing:.2px;
+ box-shadow:0 7px 18px rgba(7,20,38,.2)
+}
+#transferBox{background:#edf7fd!important;color:#36566e!important;border:0!important;font-size:11px}
+#transferBox .muted{color:#5e768b}
+.package-fields{background:#f3f6f8!important;color:#152536!important;border-color:#dce4ea!important}
+.package-fields input{background:#fff!important;color:#152536!important}
+.trip-search-overlay{
+ background:rgba(7,20,38,.38)!important;backdrop-filter:blur(2px)!important;
+ align-items:center!important
+}
+.trip-search-map{filter:saturate(.75) brightness(.72)}
+.trip-search-shade{
+ background:linear-gradient(180deg,rgba(7,20,38,.28),rgba(7,20,38,.45))!important
+}
+.trip-search-content{
+ width:min(390px,88vw)!important;padding:28px 24px!important;border-radius:28px!important;
+ background:rgba(7,20,38,.91)!important;border:1px solid rgba(255,255,255,.13)!important;
+ box-shadow:0 25px 70px rgba(0,0,0,.38)!important;backdrop-filter:blur(24px)
+}
+.trip-search-content h2{font-size:22px!important;letter-spacing:.5px;margin:16px 0 7px!important}
+.trip-search-content p{font-size:12px!important;margin:0 0 14px}
+.holyn-search-orbit{
+ width:125px!important;height:125px!important;border-width:4px!important;
+ box-shadow:0 0 0 10px rgba(39,167,255,.08),0 0 45px rgba(39,167,255,.28)!important
+}
+.holyn-search-orbit b{font-size:19px!important}
+.holyn-search-orbit:before{width:155px!important;height:155px!important}
+.holyn-search-orbit:after{width:195px!important;height:195px!important}
+.searching-destination{font-size:11px!important;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-cancel-btn{
+ background:#fff!important;color:#091827!important;border-radius:13px!important;
+ padding:13px!important;font-size:13px!important;margin-top:16px!important
+}
+@media(max-width:700px){
+ body:has(#passenger:not(.hidden)) #ownerModeNav{top:8px;min-width:0;width:auto}
+ body:has(#passenger:not(.hidden)) #ownerModeNav button{padding:8px 10px;font-size:10px}
+ .passenger-topbar{padding:58px 14px 10px}
+ .passenger-destination{top:103px!important;left:12px!important;right:12px!important}
+ .passenger-center{right:14px!important;bottom:205px!important}
+ .passenger-bottom{padding-left:12px!important;padding-right:12px!important}
+ .passenger-vehicle b{font-size:10px!important}
+ .passenger-vehicle span{font-size:8px!important}
+}
+
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script></head>
 <body>
