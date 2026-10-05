@@ -662,7 +662,7 @@ async function getDrivingRoute(o,d){
 }
 function setPassengerDestinationMarker(d){if(!tripMap||typeof L==='undefined')return;if(destinationMarker)destinationMarker.setLatLng([d.lat,d.lng]);else destinationMarker=L.marker([d.lat,d.lng]).addTo(tripMap).bindPopup('Destino HOLYN').openPopup()}
 async function drawRoute(o,d){const r=await getDrivingRoute(o,d);if(!r)return null;const c=r.geometry.coordinates.map(x=>[x[1],x[0]]);if(routeLine)routeLine.setLatLngs(c);else routeLine=L.polyline(c,{weight:5,color:'#27a7ff'}).addTo(tripMap);tripMap.fitBounds(routeLine.getBounds(),{padding:[35,35]});return r}
-let selectedDestination=null,activePassengerTripId=null,searchingMap=null,destinationMarker=null;
+let selectedDestination=null,activePassengerTripId=null,searchingMap=null,destinationMarker=null,passengerRouteMetrics=null;
 function calculateHolynFare(km,min,type){const c={HOLYN:[7000,2500,110],'HOLYN Plus':[9500,3200,140],'HOLYN Moto':[5000,1900,85],Paquetería:[8000,2500,110]}[type]||[7000,2500,110];return Math.max(5000,Math.round((c[0]+km*c[1]+min*c[2])/500)*500)}
 async function searchPassengerDestination(){
  const q=document.getElementById('destination')?.value.trim();if(!q)return;
