@@ -621,7 +621,7 @@ function isRecoverableActiveTrip(t){
  return t.status==='requested'?age<30*60*1000:age<12*60*60*1000;
 }
 function getCurrentPosition(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,maximumAge:10000,timeout:15000})})}
-async const holynGeoCache=new Map();
+const holynGeoCache=new Map();
 async function geocodeDestination(q){
  const raw=String(q||'').trim();if(!raw)return null;
  const key=raw.toLowerCase();if(holynGeoCache.has(key))return holynGeoCache.get(key);
