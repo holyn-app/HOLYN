@@ -469,7 +469,7 @@ function switchOwnerMode(mode){
  if(mode==='admin'){loadAdmin();admin.scrollIntoView({behavior:'smooth',block:'start'});}
 }
 
-async function forgotPassword(){
+async async function forgotPassword(){
  const email=emailEl().value.trim();
  if(!email){msg('authMsg','Escribe primero tu correo y luego pulsa “¿Olvidaste tu contraseña?”.');return}
  const button=document.querySelector('#auth button[onclick="forgotPassword()"]');
