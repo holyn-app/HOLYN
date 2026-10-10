@@ -170,6 +170,11 @@ body:has(#passenger:not(.hidden)) #passenger{display:block!important}
  .passenger-vehicle span{font-size:8px!important}
 }
 
+
+.destination-suggestions{position:relative;z-index:1200;margin:0 12px 10px;max-height:240px;overflow-y:auto;background:#fff;color:#102033;border:1px solid #d7e0e9;border-radius:12px;box-shadow:0 12px 28px rgba(5,20,38,.18)}
+.destination-suggestion{display:block;width:100%;text-align:left;background:#fff!important;color:#102033!important;border:0!important;border-bottom:1px solid #e8edf2!important;border-radius:0!important;padding:11px 13px!important;font-size:13px!important;white-space:normal;line-height:1.35}
+.destination-suggestion:last-child{border-bottom:0!important}.destination-suggestion b{display:block;font-size:13px;margin-bottom:3px}.destination-suggestion span{display:block;color:#64748b;font-size:11px;font-weight:500}
+.destination-suggestion:active,.destination-suggestion:hover{background:#edf7ff!important}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script></head>
 <body>
@@ -220,7 +225,7 @@ body:has(#passenger:not(.hidden)) #passenger{display:block!important}
     </div>
     <div class="passenger-destination">
       <label>¿A dónde vas?</label>
-      <div class="passenger-destination-search"><input id="destination" placeholder="Escribe tu destino y presiona Buscar" autocomplete="street-address"><button type="button" class="destination-search-btn" onclick="searchPassengerDestination()">Buscar</button></div><div id="destinationResult" class="destination-result hidden"></div><div id="fareAuto" class="fare-auto">El precio se calculará automáticamente con la ruta.</div>
+      <div class="passenger-destination-search"><input id="destination" placeholder="Calle, esquina o lugar; luego elegí ciudad" autocomplete="off" oninput="queueDestinationSuggestions()"><button type="button" class="destination-search-btn" onclick="searchPassengerDestination()">Buscar</button></div><div id="destinationSuggestions" class="destination-suggestions hidden" role="listbox" aria-label="Elegí ciudad y dirección"></div><div id="destinationResult" class="destination-result hidden"></div><div id="fareAuto" class="fare-auto">El precio se calculará automáticamente con la ruta.</div>
       <div class="passenger-vehicle-row">
         <div class="passenger-vehicle active" onclick="chooseVehicle('HOLYN',this)"><b>🚕 HOLYN</b><span>Estándar</span></div>
         <div class="passenger-vehicle" onclick="chooseVehicle('HOLYN Plus',this)"><b>✨ Plus</b><span>Más comodidad</span></div>
@@ -622,24 +627,87 @@ function isRecoverableActiveTrip(t){
 }
 function getCurrentPosition(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,maximumAge:10000,timeout:15000})})}
 const holynGeoCache=new Map();
+let destinationSuggestionTimer=null,destinationSuggestionRequest=0,destinationSuggestionItems=[];
+function queueDestinationSuggestions(){
+ clearTimeout(destinationSuggestionTimer);
+ const box=document.getElementById('destinationSuggestions');
+ const input=document.getElementById('destination');
+ if(!box||!input)return;
+ selectedDestination=null;passengerRouteMetrics=null;
+ const result=document.getElementById('destinationResult');if(result)result.classList.add('hidden');
+ const fare=document.getElementById('fare');if(fare)fare.textContent='Buscá un destino para calcular el precio';
+ if(input.value.trim().length<3){box.classList.add('hidden');box.innerHTML='';return}
+ box.classList.remove('hidden');box.innerHTML='<div style="padding:12px;color:#64748b;font-size:12px">Buscando direcciones y ciudades…</div>';
+ destinationSuggestionTimer=setTimeout(()=>searchDestinationSuggestions(input.value.trim()),450);
+}
+function formatGeocodeLabel(p){
+ const street=[p?.housenumber,p?.street].filter(Boolean).join(' ');
+ return [p?.name&&p.name!==p.street?p.name:'',street,p?.district,p?.city,p?.state,p?.country].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+}
+async function searchDestinationSuggestions(query){
+ const box=document.getElementById('destinationSuggestions');if(!box)return;
+ const request=++destinationSuggestionRequest;
+ try{
+  const u='https://photon.komoot.io/api/?limit=12&lang=es&q='+encodeURIComponent(query+', Paraguay');
+  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),8000);
+  const r=await fetch(u,{headers:{'Accept':'application/json'},signal:ctl.signal});clearTimeout(timer);
+  if(!r.ok)throw new Error('geocoder');
+  const j=await r.json();
+  if(request!==destinationSuggestionRequest)return;
+  const features=(j.features||[]).filter(f=>{
+   const p=f.properties||{};
+   return /paraguay/i.test(String(p.country||'')) || String(p.countrycode||'').toLowerCase()==='py';
+  });
+  const seen=new Set();
+  destinationSuggestionItems=features.filter(f=>{
+   const p=f.properties||{},coords=f.geometry?.coordinates;
+   if(!coords||coords.length<2)return false;
+   const label=formatGeocodeLabel(p)||query;
+   const key=label.toLowerCase()+'|'+coords.join(',');
+   if(seen.has(key))return false;seen.add(key);return true;
+  }).slice(0,8).map(f=>({lat:Number(f.geometry.coordinates[1]),lng:Number(f.geometry.coordinates[0]),label:formatGeocodeLabel(f.properties)||query,properties:f.properties}));
+  if(!destinationSuggestionItems.length){
+   box.innerHTML='<div style="padding:12px;color:#64748b;font-size:12px">No encontramos opciones en Paraguay. Probá agregando calle, barrio o ciudad.</div>';
+   box.classList.remove('hidden');return;
+  }
+  box.innerHTML=destinationSuggestionItems.map((d,i)=>'<button type="button" class="destination-suggestion" onclick="selectDestinationSuggestion('+i+')"><b>📍 '+escapeHtml(d.properties?.name||d.properties?.street||d.label.split(',')[0])+'</b><span>'+escapeHtml(d.label)+'</span></button>').join('');
+  box.classList.remove('hidden');
+ }catch(e){
+  if(request!==destinationSuggestionRequest)return;
+  box.innerHTML='<div style="padding:12px;color:#64748b;font-size:12px">No se pudieron cargar las opciones. Revisá tu conexión e intentá de nuevo.</div>';
+  box.classList.remove('hidden');
+ }
+}
+async function selectDestinationSuggestion(index){
+ const d=destinationSuggestionItems[index];if(!d)return;
+ selectedDestination=d;
+ const input=document.getElementById('destination');if(input)input.value=d.label;
+ const box=document.getElementById('destinationSuggestions');if(box)box.classList.add('hidden');
+ setPassengerDestinationMarker(d);
+ const result=document.getElementById('destinationResult');if(result){result.textContent='📍 '+d.label;result.classList.remove('hidden')}
+ if(!passengerLocation){msg('passengerMsg','📍 Esperando tu ubicación GPS para calcular la tarifa.');return}
+ const fare=document.getElementById('fare');if(fare)fare.textContent='Calculando ruta y precio…';
+ const route=await getDrivingRoute(passengerLocation,d);
+ if(!route){passengerRouteMetrics=null;msg('passengerMsg','Dirección seleccionada, pero no se pudo calcular la ruta. Intentá de nuevo.');return}
+ passengerRouteMetrics={distanceKm:route.distance/1000,durationMin:route.duration/60};
+ updatePassengerFare();await drawRoute(passengerLocation,d);
+}
 async function geocodeDestination(q){
  const raw=String(q||'').trim();if(!raw)return null;
  const key=raw.toLowerCase();if(holynGeoCache.has(key))return holynGeoCache.get(key);
  try{
-  const u='https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=py&dedupe=1&q='+encodeURIComponent(raw+', Paraguay');
-  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),7000);
-  const r=await fetch(u,{headers:{'Accept':'application/json','Accept-Language':'es-PY,es;q=0.9'},signal:ctl.signal});clearTimeout(timer);
-  if(r.ok){const d=await r.json();const x=d?.[0];if(x?.lat&&x?.lon){const out={lat:Number(x.lat),lng:Number(x.lon),label:x.display_name||raw};holynGeoCache.set(key,out);return out}}
- }catch(e){}
- try{
-  const u='https://photon.komoot.io/api/?limit=5&lang=es&q='+encodeURIComponent(raw+', Paraguay');
-  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),7000);
+  const u='https://photon.komoot.io/api/?limit=8&lang=es&q='+encodeURIComponent(raw+', Paraguay');
+  const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),8000);
   const r=await fetch(u,{headers:{'Accept':'application/json'},signal:ctl.signal});clearTimeout(timer);
-  if(r.ok){const j=await r.json();const features=(j.features||[]).filter(f=>/paraguay|py/i.test((f.properties?.country||'')+' '+(f.properties?.countrycode||'')));const x=features[0]||j.features?.[0];if(x?.geometry?.coordinates){const out={lat:Number(x.geometry.coordinates[1]),lng:Number(x.geometry.coordinates[0]),label:formatGeocodeLabel(x.properties)||raw};holynGeoCache.set(key,out);return out}}
+  if(r.ok){
+   const j=await r.json();
+   const features=(j.features||[]).filter(f=>/paraguay/i.test(String(f.properties?.country||''))||String(f.properties?.countrycode||'').toLowerCase()==='py');
+   const f=features[0]||j.features?.[0],coords=f?.geometry?.coordinates;
+   if(coords){const out={lat:Number(coords[1]),lng:Number(coords[0]),label:formatGeocodeLabel(f.properties)||raw};holynGeoCache.set(key,out);return out}
+  }
  }catch(e){}
  return null;
 }
-function formatGeocodeLabel(p){return p?[p.name,p.street,p.housenumber,p.district,p.city,p.state,p.country].filter(Boolean).join(', '):''}
 async function reverseGeocode(lat,lng){
  try{
   const u='https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lng)+'&zoom=18&addressdetails=1&accept-language=es';
