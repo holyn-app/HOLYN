@@ -733,19 +733,13 @@ async function drawRoute(o,d){const r=await getDrivingRoute(o,d);if(!r)return nu
 let selectedDestination=null,activePassengerTripId=null,searchingMap=null,destinationMarker=null,passengerRouteMetrics=null;
 function calculateHolynFare(km,min,type){const c={HOLYN:[7000,2500,110],'HOLYN Plus':[9500,3200,140],'HOLYN Moto':[5000,1900,85],Paquetería:[8000,2500,110]}[type]||[7000,2500,110];return Math.max(5000,Math.round((c[0]+km*c[1]+min*c[2])/500)*500)}
 async function searchPassengerDestination(){
- const q=document.getElementById('destination')?.value.trim();if(!q)return;
- const b=document.querySelector('.destination-search-btn');if(b){b.disabled=true;b.textContent='Buscando...'}
+ const input=document.getElementById('destination'),q=input?.value.trim();if(!q)return;
+ const b=document.querySelector('.destination-search-btn');if(b){b.disabled=true;b.textContent='Buscando…'}
  try{
-  const d=await geocodeDestination(q);
-  if(!d){selectedDestination=null;passengerRouteMetrics=null;document.getElementById('fare').textContent='No pudimos encontrar el destino';document.getElementById('fareAuto').textContent='Probá con calle + número + ciudad o barrio';msg('passengerMsg','No encontramos esa dirección. Probá escribirla con ciudad o barrio.');return}
-  selectedDestination=d;setPassengerDestinationMarker(d);
-  const r=document.getElementById('destinationResult');if(r){r.textContent='📍 '+(d.label||q);r.classList.remove('hidden')}
-  if(!passengerLocation){msg('passengerMsg','📍 Esperando tu ubicación para calcular el precio exacto.');return}
-  const route=await getDrivingRoute(passengerLocation,d);
-  if(!route){msg('passengerMsg','Encontramos el destino, pero el servicio de rutas no respondió. Intentá nuevamente.');return}
-  passengerRouteMetrics={distanceKm:route.distance/1000,durationMin:route.duration/60};
-  updatePassengerFare();
-  await drawRoute(passengerLocation,d);
+  await searchDestinationSuggestions(q);
+  const box=document.getElementById('destinationSuggestions');
+  if(box&&!box.classList.contains('hidden'))msg('passengerMsg','Elegí la dirección correcta y verificá la ciudad o distrito antes de solicitar el viaje.');
+  else msg('passengerMsg','No encontramos esa dirección. Probá agregando barrio y ciudad.');
  }finally{if(b){b.disabled=false;b.textContent='Buscar'}}
 }
 
